@@ -110,6 +110,9 @@ public enum PropertyKey {
   SWIFT_USE_PUBLIC_URI_KEY(Name.SWIFT_USE_PUBLIC_URI_KEY, null),
   SWIFT_USER_KEY(Name.SWIFT_USER_KEY, null),
   SWIFT_REGION_KEY(Name.SWIFT_REGION_KEY, null),
+  QINGSTOR_ACCESS_KEY(Name.QINGSTOR_ACCESS_KEY, null),
+  QINGSTOR_SECRET_KEY(Name.QINGSTOR_SECRET_KEY, null),
+  QINGSTOR_ZONE(Name.QINGSTOR_ZONE, null),
 
   //
   // Master related properties
@@ -504,6 +507,9 @@ public enum PropertyKey {
     public static final String SWIFT_USER_KEY = "fs.swift.user";
     public static final String SWIFT_USE_PUBLIC_URI_KEY = "fs.swift.use.public.url";
     public static final String SWIFT_REGION_KEY = "fs.swift.region";
+    public static final String QINGSTOR_ACCESS_KEY = "fs.qingstor.accessKeyId";
+    public static final String QINGSTOR_SECRET_KEY = "fs.qingstor.secretAccessKey";
+    public static final String QINGSTOR_ZONE = "fs.qingstor.zone";
 
     //
     // Master related properties
