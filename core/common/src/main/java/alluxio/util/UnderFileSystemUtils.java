@@ -122,7 +122,8 @@ public final class UnderFileSystemUtils {
         || ufsAddress.startsWith(Constants.HEADER_S3A)
         || ufsAddress.startsWith(Constants.HEADER_GCS)
         || ufsAddress.startsWith(Constants.HEADER_SWIFT)
-        || ufsAddress.startsWith(Constants.HEADER_OSS);
+        || ufsAddress.startsWith(Constants.HEADER_OSS)
+        || ufsAddress.startsWith(Constants.HEADER_QINGSTOR);
   }
 
   /**
@@ -130,7 +131,7 @@ public final class UnderFileSystemUtils {
    * @return true if the implementation is an object storage implementation
    */
   public static boolean isObjectStorage(UnderFileSystem ufs) {
-    return isGcs(ufs) || isOss(ufs) || isS3(ufs) || isSwift(ufs);
+    return isGcs(ufs) || isOss(ufs) || isS3(ufs) || isSwift(ufs) || isQingstor(ufs);
   }
 
   /**
@@ -139,6 +140,14 @@ public final class UnderFileSystemUtils {
    */
   public static boolean isOss(UnderFileSystem ufs) {
     return "oss".equals(ufs.getUnderFSType());
+  }
+
+  /**
+   * @param ufs the {@link UnderFileSystem} implementation to check
+   * @return true if the implementation is an Qingstor implementation
+   */
+  public static boolean isQingstor(UnderFileSystem ufs) {
+    return "qingstor".equals(ufs.getUnderFSType());
   }
 
   /**
