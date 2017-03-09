@@ -1,7 +1,7 @@
 /*
- * The Alluxio Open Foundation licenses this work under the Apache License, version 2.0
- * (the "License"). You may not use this work except in compliance with the License, which is
- * available at www.apache.org/licenses/LICENSE-2.0
+ * The Alluxio Open Foundation licenses this work under the Apache License, version 2.0 (the
+ * "License"). You may not use this work except in compliance with the License, which is available
+ * at www.apache.org/licenses/LICENSE-2.0
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
  * either express or implied, as more fully set forth in the License.
@@ -31,7 +31,11 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 
 public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
   private static final Logger LOG = LoggerFactory.getLogger(QingstorUnderFileSystem.class);
@@ -83,13 +87,15 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
     Bucket bucket = qingstorClient.getBucket(bucketName, zone);
 
     // get Qingstor owner
+    // TODO(XW): Getting null owner, use id instead.
     Bucket.GetBucketACLOutput getBucketACLOutput = bucket.getACL();
-    String owner = getBucketACLOutput.getOwner().getName();
+    String owner = getBucketACLOutput.getOwner().getID();
 
     // Default to readable and writable by the user.
-    short bucketMode = (short) 700;
+    short bucketMode = (short) 777;
 
-    return new QingstorUnderFileSystem(uri, qingstorClient, bucket, bucketName, owner, bucketMode);
+    return new QingstorUnderFileSystem(uri, qingstorClient, bucket, bucketName, owner,
+        bucketMode);
   }
 
   /**
@@ -189,12 +195,20 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
       Bucket.HeadObjectInput headObjectInput = new Bucket.HeadObjectInput();
       Bucket.HeadObjectOutput headObjectOutput = mBucket.headObject(key, headObjectInput);
 
-      if (headObjectOutput == null) {
+      if (headObjectOutput == null || headObjectOutput.getLastModified() == null) {
         return null;
       }
-      return new ObjectStatus(headObjectOutput.getContentLength(),
-          Long.getLong(headObjectOutput.getLastModified()));
+
+      // format metadata
+      String modifiedStr = headObjectOutput.getLastModified();
+      long contentLen = modifiedStr == null ? 0 : headObjectOutput.getContentLength();
+      SimpleDateFormat simpleDateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
+      long lastModified = modifiedStr == null ? 0 : simpleDateFormat.parse(modifiedStr).getTime();
+
+      return new ObjectStatus(contentLen, lastModified);
     } catch (QSException e) {
+      return null;
+    } catch (ParseException e) {
       return null;
     }
   }
@@ -207,6 +221,8 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
   @Override
   protected ObjectListingChunk getObjectListingChunk(String key, boolean recursive)
       throws IOException {
+
+
     String delimiter = recursive ? "" : PATH_SEPARATOR;
     key = PathUtils.normalizePath(key, PATH_SEPARATOR);
     // In case key is root (empty string) do not normalize prefix
@@ -214,9 +230,21 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
     Bucket.ListObjectsInput input = new Bucket.ListObjectsInput();
     input.setPrefix(key);
     input.setLimit((long) getListingChunkLength());
-    input.setDelimiter(delimiter);
+    //input.setDelimiter(delimiter);
+    input.setMarker(null);
 
     Bucket.ListObjectsOutput result = getObjectListingChunk(input);
+
+    Iterator<Types.KeyModel> it = result.getKeys().iterator();
+
+    // Qingstor will return both directory and the directory flag file created by alluxio
+    while(it.hasNext()){
+      String theKey = it.next().getKey();
+      if(theKey.endsWith(PATH_SEPARATOR)){
+        it.remove();
+      }
+    }
+
     if (result != null) {
       return new QingstorObjectListingChunk(input, result);
     }
