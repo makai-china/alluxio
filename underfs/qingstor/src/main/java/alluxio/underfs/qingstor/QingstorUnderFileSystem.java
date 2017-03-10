@@ -25,6 +25,8 @@ import com.qingstor.sdk.exception.QSException;
 import com.qingstor.sdk.service.Bucket;
 import com.qingstor.sdk.service.QingStor;
 import com.qingstor.sdk.service.Types;
+import com.qingstor.sdk.utils.Base64;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +45,9 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
   /** Suffix for an empty file to flag it as a directory. */
   private static final String FOLDER_SUFFIX = "_$folder$";
 
+  /** Static hash for a directory's empty contents. */
+  private static final String DIR_HASH;
+
   /** Qingstor service. */
   private final QingStor mClient;
 
@@ -57,6 +62,11 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
 
   /** The permission mode that the account owner has to the bucket. */
   private final short mBucketMode;
+
+  static {
+    byte[] dirByteHash = DigestUtils.md5(new byte[0]);
+    DIR_HASH = new String(Base64.encode(dirByteHash));
+  }
 
   /**
    * Constructs a new instance of {@link QingstorUnderFileSystem}.
@@ -92,10 +102,9 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
     String owner = getBucketACLOutput.getOwner().getID();
 
     // Default to readable and writable by the user.
-    short bucketMode = (short) 777;
+    short bucketMode = (short) 700;
 
-    return new QingstorUnderFileSystem(uri, qingstorClient, bucket, bucketName, owner,
-        bucketMode);
+    return new QingstorUnderFileSystem(uri, qingstorClient, bucket, bucketName, owner, bucketMode);
   }
 
   /**
@@ -151,6 +160,7 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
     try {
       Bucket.PutObjectInput input = new Bucket.PutObjectInput();
       input.setContentLength((long) 0);
+      input.setContentMD5(DIR_HASH);
       mBucket.putObject(key, input);
       return true;
     } catch (QSException e) {
@@ -202,7 +212,8 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
       // format metadata
       String modifiedStr = headObjectOutput.getLastModified();
       long contentLen = modifiedStr == null ? 0 : headObjectOutput.getContentLength();
-      SimpleDateFormat simpleDateFormat = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
+      SimpleDateFormat simpleDateFormat =
+          new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
       long lastModified = modifiedStr == null ? 0 : simpleDateFormat.parse(modifiedStr).getTime();
 
       return new ObjectStatus(contentLen, lastModified);
@@ -230,20 +241,10 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
     Bucket.ListObjectsInput input = new Bucket.ListObjectsInput();
     input.setPrefix(key);
     input.setLimit((long) getListingChunkLength());
-    //input.setDelimiter(delimiter);
+    input.setDelimiter(delimiter);
     input.setMarker(null);
 
     Bucket.ListObjectsOutput result = getObjectListingChunk(input);
-
-    Iterator<Types.KeyModel> it = result.getKeys().iterator();
-
-    // Qingstor will return both directory and the directory flag file created by alluxio
-    while(it.hasNext()){
-      String theKey = it.next().getKey();
-      if(theKey.endsWith(PATH_SEPARATOR)){
-        it.remove();
-      }
-    }
 
     if (result != null) {
       return new QingstorObjectListingChunk(input, result);
