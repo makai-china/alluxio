@@ -16,6 +16,7 @@ import alluxio.Configuration;
 import alluxio.Constants;
 import alluxio.PropertyKey;
 import alluxio.underfs.UnderFileSystem;
+import alluxio.underfs.UnderFileSystemConfiguration;
 import alluxio.underfs.UnderFileSystemFactory;
 
 import com.google.common.base.Preconditions;
@@ -38,7 +39,7 @@ public class QingstorUnderFileSystemFactory implements UnderFileSystemFactory {
   public QingstorUnderFileSystemFactory() {}
 
   @Override
-  public UnderFileSystem create(String path, Object unusedConf) {
+  public UnderFileSystem create(String path, UnderFileSystemConfiguration conf) {
     Preconditions.checkNotNull(path);
 
     if (checkQingstorCredentials()) {

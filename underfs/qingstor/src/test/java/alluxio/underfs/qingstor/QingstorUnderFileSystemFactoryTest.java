@@ -12,7 +12,7 @@
 package alluxio.underfs.qingstor;
 
 import alluxio.underfs.UnderFileSystemFactory;
-import alluxio.underfs.UnderFileSystemRegistry;
+import alluxio.underfs.UnderFileSystemFactoryRegistry;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -27,7 +27,7 @@ public class QingstorUnderFileSystemFactoryTest {
    */
   @Test
   public void factory() {
-    UnderFileSystemFactory factory = UnderFileSystemRegistry.find("qingstor://test-bucket/path");
+    UnderFileSystemFactory factory = UnderFileSystemFactoryRegistry.find("qingstor://test-bucket/path");
 
     Assert.assertNotNull(
         "A UnderFileSystemFactory should exist for qingstor paths when using this module", factory);
