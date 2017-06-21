@@ -77,7 +77,7 @@ public class QingstorInputStream extends MultiRangeObjectInputStream {
     Bucket.GetObjectInput input = new Bucket.GetObjectInput();
     // OSS returns entire object if we read past the end
     long rangeEnd = endPos < mContentLength ? endPos - 1 : mContentLength - 1;
-    String range = String.valueOf(startPos) + "-" + String.valueOf(rangeEnd);
+    String range = "bytes=" + String.valueOf(startPos) + "-" + String.valueOf(rangeEnd);
     input.setRange(range);
     try {
       Bucket.GetObjectOutput qingstorObject = mBucket.getObject(mKey, input);
