@@ -16,6 +16,7 @@ import alluxio.Configuration;
 import alluxio.Constants;
 import alluxio.PropertyKey;
 import alluxio.underfs.ObjectUnderFileSystem;
+import alluxio.underfs.UnderFileSystemConfiguration;
 import alluxio.underfs.options.OpenOptions;
 import alluxio.util.io.PathUtils;
 
@@ -75,7 +76,8 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
    * @return the created {@link QingstorUnderFileSystem} instance
    * @throws Exception when a connection to GCS could not be created
    */
-  public static QingstorUnderFileSystem createInstance(AlluxioURI uri) throws Exception {
+  public static QingstorUnderFileSystem createInstance(AlluxioURI uri,
+      UnderFileSystemConfiguration conf) throws Exception {
     String bucketName = uri.getHost();
 
     Preconditions.checkArgument(Configuration.containsKey(PropertyKey.QINGSTOR_ACCESS_KEY),
@@ -104,7 +106,7 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
     // Default to readable and writable by the user.
     short bucketMode = (short) 700;
 
-    return new QingstorUnderFileSystem(uri, qingstorClient, bucket, bucketName, owner, bucketMode);
+    return new QingstorUnderFileSystem(uri, qingstorClient, bucket, bucketName, owner, bucketMode, conf);
   }
 
   /**
@@ -117,8 +119,9 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
    * @param mBucketMode
    */
   protected QingstorUnderFileSystem(AlluxioURI uri, QingStor mClient, Bucket mBucket,
-      String mBucketName, String mOwner, short mBucketMode) {
-    super(uri);
+      String mBucketName, String mOwner, short mBucketMode,
+      UnderFileSystemConfiguration conf) {
+    super(uri, conf);
     this.mClient = mClient;
     this.mBucket = mBucket;
     this.mBucketName = mBucketName;
@@ -129,22 +132,6 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
   @Override
   public String getUnderFSType() {
     return "qingstor";
-  }
-
-  // TODO(XW): Return the name of the bucket grantee.
-  @Override
-  public String getGroup(String path) throws IOException {
-    return mOwner;
-  }
-
-  @Override
-  public short getMode(String path) throws IOException {
-    return mBucketMode;
-  }
-
-  @Override
-  public String getOwner(String path) throws IOException {
-    return mOwner;
   }
 
   // Setting Qingstor owner via Alluxio is not supported yet. This is a no-op.
@@ -216,7 +203,7 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
           new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
       long lastModified = modifiedStr == null ? 0 : simpleDateFormat.parse(modifiedStr).getTime();
 
-      return new ObjectStatus(contentLen, lastModified);
+      return new ObjectStatus(key, contentLen, lastModified);
     } catch (QSException e) {
       return null;
     } catch (ParseException e) {
@@ -281,12 +268,31 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
     }
 
     @Override
-    public String[] getObjectNames() {
-      List<Types.KeyModel> keys = mResult.getKeys();
-      String[] ret = new String[keys.size()];
+    public ObjectStatus[] getObjectStatuses() {
+      List<Types.KeyModel> objects = mResult.getKeys();
+      ObjectStatus[] ret = new ObjectStatus[objects.size()];
       int i = 0;
-      for (Types.KeyModel key : keys) {
-        ret[i++] = key.getKey();
+      for (Types.KeyModel obj : objects) {
+        try {
+          Bucket.HeadObjectInput headObjectInput = new Bucket.HeadObjectInput();
+          Bucket.HeadObjectOutput headObjectOutput = mBucket.headObject(obj.getKey(), headObjectInput);
+
+          if (headObjectOutput == null || headObjectOutput.getLastModified() == null) {
+            return null;
+          }
+          // format metadata
+          String modifiedStr = headObjectOutput.getLastModified();
+          long contentLen = modifiedStr == null ? 0 : headObjectOutput.getContentLength();
+          SimpleDateFormat simpleDateFormat =
+                  new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
+          long lastModified = modifiedStr == null ? 0 : simpleDateFormat.parse(modifiedStr).getTime();
+
+          ret[i++] = new ObjectStatus(obj.getKey(), contentLen, lastModified);
+        } catch (QSException e) {
+          return null;
+        } catch (ParseException e) {
+          return null;
+        }
       }
       return ret;
     }
@@ -308,6 +314,11 @@ public class QingstorUnderFileSystem extends ObjectUnderFileSystem {
       }
       return null;
     }
+  }
+
+  @Override
+  protected ObjectPermissions getPermissions() {
+    return new ObjectPermissions("", "", Constants.DEFAULT_FILE_SYSTEM_MODE);
   }
 
   @Override

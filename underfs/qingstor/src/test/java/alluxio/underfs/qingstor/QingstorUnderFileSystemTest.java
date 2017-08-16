@@ -12,6 +12,7 @@
 package alluxio.underfs.qingstor;
 
 import alluxio.AlluxioURI;
+import alluxio.underfs.UnderFileSystemConfiguration;
 import alluxio.underfs.options.DeleteOptions;
 
 import com.qingstor.sdk.exception.QSException;
@@ -51,7 +52,8 @@ public class QingstorUnderFileSystemTest {
     mBucket = Mockito.mock(Bucket.class);
 
     mQingstorUnderFileSystem = new QingstorUnderFileSystem(new AlluxioURI(""), mClient, mBucket,
-        BUCKET_NAME, ACCOUNT_OWNER, BUCKET_MODE);
+        BUCKET_NAME, ACCOUNT_OWNER, BUCKET_MODE,
+        UnderFileSystemConfiguration.defaults());
   }
 
   /**

@@ -11,16 +11,16 @@
 
 package alluxio.underfs.qingstor;
 
-import java.io.BufferedInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-
 import javax.annotation.concurrent.NotThreadSafe;
+import alluxio.underfs.MultiRangeObjectInputStream;
 
 import com.qingstor.sdk.exception.QSException;
 import com.qingstor.sdk.service.Bucket;
 
-import alluxio.underfs.MultiRangeObjectInputStream;
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

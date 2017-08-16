@@ -465,29 +465,7 @@ public class PropertyKey {
   // UFS access control related properties
   //
   // Not prefixed with fs, the s3a property names mirror the aws-sdk property names for ease of use
-<<<<<<< HEAD
-  GCS_ACCESS_KEY(Name.GCS_ACCESS_KEY, null),
-  GCS_SECRET_KEY(Name.GCS_SECRET_KEY, null),
-  OSS_ACCESS_KEY(Name.OSS_ACCESS_KEY, null),
-  OSS_ENDPOINT_KEY(Name.OSS_ENDPOINT_KEY, null),
-  OSS_SECRET_KEY(Name.OSS_SECRET_KEY, null),
-  S3A_ACCESS_KEY(Name.S3A_ACCESS_KEY, null),
-  S3A_SECRET_KEY(Name.S3A_SECRET_KEY, null),
-  S3N_ACCESS_KEY(Name.S3N_ACCESS_KEY, null),
-  S3N_SECRET_KEY(Name.S3N_SECRET_KEY, null),
-  SWIFT_API_KEY(Name.SWIFT_API_KEY, null),
-  SWIFT_AUTH_METHOD_KEY(Name.SWIFT_AUTH_METHOD_KEY, null),
-  SWIFT_AUTH_URL_KEY(Name.SWIFT_AUTH_URL_KEY, null),
-  SWIFT_PASSWORD_KEY(Name.SWIFT_PASSWORD_KEY, null),
-  SWIFT_SIMULATION(Name.SWIFT_SIMULATION, null),
-  SWIFT_TENANT_KEY(Name.SWIFT_TENANT_KEY, null),
-  SWIFT_USE_PUBLIC_URI_KEY(Name.SWIFT_USE_PUBLIC_URI_KEY, null),
-  SWIFT_USER_KEY(Name.SWIFT_USER_KEY, null),
-  SWIFT_REGION_KEY(Name.SWIFT_REGION_KEY, null),
-  QINGSTOR_ACCESS_KEY(Name.QINGSTOR_ACCESS_KEY, null),
-  QINGSTOR_SECRET_KEY(Name.QINGSTOR_SECRET_KEY, null),
-  QINGSTOR_ZONE(Name.QINGSTOR_ZONE, null),
-=======
+
   public static final PropertyKey GCS_ACCESS_KEY = new Builder(Name.GCS_ACCESS_KEY).build();
   public static final PropertyKey GCS_SECRET_KEY = new Builder(Name.GCS_SECRET_KEY).build();
   public static final PropertyKey OSS_ACCESS_KEY = new Builder(Name.OSS_ACCESS_KEY).build();
@@ -508,11 +486,15 @@ public class PropertyKey {
       new Builder(Name.SWIFT_USE_PUBLIC_URI_KEY).build();
   public static final PropertyKey SWIFT_USER_KEY = new Builder(Name.SWIFT_USER_KEY).build();
   public static final PropertyKey SWIFT_REGION_KEY = new Builder(Name.SWIFT_REGION_KEY).build();
+  public static final PropertyKey QINGSTOR_ACCESS_KEY =
+      new Builder(Name.QINGSTOR_ACCESS_KEY).build();
+  public static final PropertyKey QINGSTOR_SECRET_KEY =
+      new Builder(Name.QINGSTOR_SECRET_KEY).build();
+  public static final PropertyKey QINGSTOR_ZONE = new Builder(Name.QINGSTOR_ZONE).build();
 
   // Journal ufs related properties
   public static final PropertyKey MASTER_JOURNAL_UFS_OPTION =
       new Builder(Template.MASTER_JOURNAL_UFS_OPTION).build();
->>>>>>> 8ac0a8245403d8af4c8e60526b5fc25df659f038
 
   //
   // Mount table related properties
