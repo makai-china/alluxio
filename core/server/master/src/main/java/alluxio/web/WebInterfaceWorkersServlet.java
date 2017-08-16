@@ -49,6 +49,7 @@ public final class WebInterfaceWorkersServlet extends HttpServlet {
     private final int mFreePercent;
     private final int mUsedPercent;
     private final String mUptimeClockTime;
+    private final long mWorkerId;
 
     private NodeInfo(WorkerInfo workerInfo) {
       mHost = workerInfo.getAddress().getHost();
@@ -66,6 +67,7 @@ public final class WebInterfaceWorkersServlet extends HttpServlet {
       mUptimeClockTime =
           WebUtils.convertMsToShortClockTime(
               System.currentTimeMillis() - workerInfo.getStartTimeMs());
+      mWorkerId = workerInfo.getId();
     }
 
     /**
@@ -132,6 +134,13 @@ public final class WebInterfaceWorkersServlet extends HttpServlet {
     }
 
     /**
+     * @return the worker id
+     */
+    public long getWorkerId() {
+      return mWorkerId;
+    }
+
+    /**
      * Compare {@link NodeInfo} by lexicographical order of their associated host.
      *
      * @param o the comparison term
@@ -183,7 +192,6 @@ public final class WebInterfaceWorkersServlet extends HttpServlet {
    * @param request the {@link HttpServletRequest} object
    * @param response the {@link HttpServletResponse} object
    * @throws ServletException if the target resource throws this exception
-   * @throws IOException if the target resource throws this exception
    */
   @Override
   protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -213,7 +221,6 @@ public final class WebInterfaceWorkersServlet extends HttpServlet {
    * Populates key, value pairs for UI display.
    *
    * @param request the {@link HttpServletRequest} object
-   * @throws IOException if an I/O error occurs
    */
   private void populateValues(HttpServletRequest request) throws IOException {
     request.setAttribute("debug", Configuration.getBoolean(PropertyKey.DEBUG));

@@ -11,8 +11,6 @@
 
 package alluxio.exception;
 
-import alluxio.PropertyKey;
-
 import javax.annotation.concurrent.ThreadSafe;
 
 /**
@@ -53,9 +51,15 @@ public enum PreconditionMessage {
   ERR_ZK_ADDRESS_NOT_SET("Cannot get leader address from zookeeper; %s is not set"),
   FILE_TO_PERSIST_MUST_BE_COMPLETE("File being persisted must be complete"),
   FILE_WRITE_LOCATION_POLICY_UNSPECIFIED("The location policy is not specified"),
+  UFS_READ_LOCATION_POLICY_UNSPECIFIED("The UFS read location policy is not specified"),
   GCS_BUCKET_MUST_BE_SET("The %s system property must be set to use the GCSUnderStorageCluster"),
+  INCONSISTENT_ZK_CONFIGURATION(
+      "Inconsistent Zookeeper configuration; %s should be set only when %s is true"),
   INODE_TREE_UNINITIALIZED_IS_ROOT_ID("Cannot call isRootId() before initializeRoot()"),
-  INVALID_USER_FILE_BUFFER_BYTES("Invalid \"" + PropertyKey.USER_FILE_BUFFER_BYTES + "\": %d"),
+  INVALID_PROPERTY("Invalid property: %s"),
+  INVALID_USER_FILE_BUFFER_BYTES("Invalid value of %s: %d"),
+  NOT_ENOUGH_BYTES_READ(
+      "Not enough bytes have been read [bytesRead: %d, bytesToRead: %d] from the UFS file: %s."),
   PERMISSION_GROUP_IS_NULL("Group cannot be null when constructing Permission"),
   PERMISSION_MODE_IS_NULL("Mode cannot be null when constructing Permission"),
   PERMISSION_OWNER_IS_NULL("Owner cannot be null when constructing Permission"),

@@ -25,7 +25,8 @@ import java.io.Closeable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.annotation.concurrent.NotThreadSafe;
+import javax.annotation.concurrent.ThreadSafe;
+import javax.annotation.Nullable;
 
 /**
  * Cache for storing file input and output streams.
@@ -34,7 +35,7 @@ import javax.annotation.concurrent.NotThreadSafe;
  * lookups of the stream. The streams are automatically closed when their cache entry is
  * invalidated or after being inactive for an extended period of time.
  */
-@NotThreadSafe
+@ThreadSafe
 public final class StreamCache {
   private static final Logger LOG = LoggerFactory.getLogger(StreamCache.class);
 
@@ -106,6 +107,7 @@ public final class StreamCache {
    * @param key the key for the stream to invalidate
    * @return the invalidated stream or null if the cache contains no stream for the given key
    */
+  @Nullable
   public Closeable invalidate(Integer key) {
     FileInStream is = mInStreamCache.getIfPresent(key);
     if (is != null) {
@@ -118,5 +120,12 @@ public final class StreamCache {
       return os;
     }
     return null;
+  }
+
+  /**
+   * @return total size of the cache for both input streams and output streams
+   */
+  public long size() {
+    return mInStreamCache.size() + mOutStreamCache.size();
   }
 }

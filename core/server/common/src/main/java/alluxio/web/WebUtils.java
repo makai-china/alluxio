@@ -15,15 +15,10 @@ import alluxio.Constants;
 
 import com.google.common.base.Preconditions;
 
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-
 import javax.annotation.concurrent.ThreadSafe;
 
 @ThreadSafe
 final class WebUtils {
-
   /**
    * Converts a byte array to string.
    *
@@ -56,17 +51,6 @@ final class WebUtils {
 
     return String.format("%d day(s), %d hour(s), %d minute(s), and %d second(s)", days, hours,
         mins, secs);
-  }
-
-  /**
-   * Converts milliseconds to date.
-   *
-   * @param millis milliseconds
-   * @return input encoded as date
-   */
-  public static String convertMsToDate(long millis) {
-    DateFormat formatter = new SimpleDateFormat("MM-dd-yyyy HH:mm:ss:SSS");
-    return formatter.format(new Date(millis));
   }
 
   /**

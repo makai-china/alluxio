@@ -211,7 +211,7 @@ public final class BlockMetadataManager {
    * @return the metadata of this block store
    */
   public BlockStoreMeta getBlockStoreMeta() {
-    return BlockStoreMeta.getBlockStoreMeta(this);
+    return BlockStoreMeta.Factory.create(this);
   }
 
   /**
@@ -220,7 +220,7 @@ public final class BlockMetadataManager {
    * @return the full metadata of this block store
    */
   public BlockStoreMeta getBlockStoreMetaFull() {
-    return BlockStoreMeta.getBlockStoreMetaFull(this);
+    return BlockStoreMeta.Factory.createFull(this);
   }
 
   /**
@@ -244,10 +244,24 @@ public final class BlockMetadataManager {
    * Gets the metadata of a temp block.
    *
    * @param blockId the id of the temp block
-   * @return metadata of the block or null
+   * @return metadata of the block
    * @throws BlockDoesNotExistException when block id can not be found
    */
   public TempBlockMeta getTempBlockMeta(long blockId) throws BlockDoesNotExistException {
+    TempBlockMeta blockMeta = getTempBlockMetaOrNull(blockId);
+    if (blockMeta == null) {
+      throw new BlockDoesNotExistException(ExceptionMessage.TEMP_BLOCK_META_NOT_FOUND, blockId);
+    }
+    return blockMeta;
+  }
+
+  /**
+   * Gets the metadata of a temp block.
+   *
+   * @param blockId the id of the temp block
+   * @return metadata of the block or null
+   */
+  public TempBlockMeta getTempBlockMetaOrNull(long blockId) {
     for (StorageTier tier : mTiers) {
       for (StorageDir dir : tier.getStorageDirs()) {
         if (dir.hasTempBlockMeta(blockId)) {
@@ -255,7 +269,7 @@ public final class BlockMetadataManager {
         }
       }
     }
-    throw new BlockDoesNotExistException(ExceptionMessage.TEMP_BLOCK_META_NOT_FOUND, blockId);
+    return null;
   }
 
   /**

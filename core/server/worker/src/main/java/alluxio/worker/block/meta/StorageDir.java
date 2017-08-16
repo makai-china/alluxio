@@ -83,7 +83,6 @@ public final class StorageDir {
    * @param dirPath filesystem path of this dir for actual storage
    * @return the new created {@link StorageDir}
    * @throws BlockAlreadyExistsException when metadata of existing committed blocks already exists
-   * @throws IOException if the storage directory cannot be created with the appropriate permissions
    * @throws WorkerOutOfSpaceException when metadata can not be added due to limited left space
    */
   public static StorageDir newStorageDir(StorageTier tier, int dirIndex, long capacityBytes,
@@ -101,7 +100,6 @@ public final class StorageDir {
    * {dir}/{blockId}. other paths will be deleted.
    *
    * @throws BlockAlreadyExistsException when metadata of existing committed blocks already exists
-   * @throws IOException if the storage directory cannot be created with the appropriate permissions
    * @throws WorkerOutOfSpaceException when metadata can not be added due to limited left space
    */
   private void initializeMeta() throws BlockAlreadyExistsException, IOException,
@@ -253,14 +251,9 @@ public final class StorageDir {
    *
    * @param blockId the block id
    * @return {@link TempBlockMeta} of the given block or null
-   * @throws BlockDoesNotExistException if no temp block is found
    */
-  public TempBlockMeta getTempBlockMeta(long blockId) throws BlockDoesNotExistException {
-    TempBlockMeta tempBlockMeta = mBlockIdToTempBlockMap.get(blockId);
-    if (tempBlockMeta == null) {
-      throw new BlockDoesNotExistException(ExceptionMessage.TEMP_BLOCK_META_NOT_FOUND, blockId);
-    }
-    return tempBlockMeta;
+  public TempBlockMeta getTempBlockMeta(long blockId) {
+    return mBlockIdToTempBlockMap.get(blockId);
   }
 
   /**

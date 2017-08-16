@@ -15,11 +15,17 @@
   <parent>
     <groupId>org.alluxio</groupId>
     <artifactId>alluxio-parent</artifactId>
-    <version>1.5.0-SNAPSHOT</version>
+    <version>1.6.0-SNAPSHOT</version>
   </parent>
-  <artifactId>alluxio-assemblies</artifactId>
-  <name>Alluxio Assemblies</name>
-  <description>Assemblies of Alluxio system</description>
+  <artifactId>alluxio-assembly</artifactId>
+  <packaging>pom</packaging>
+  <name>Alluxio Assembly JARs</name>
+  <description>Assembly JARs of Alluxio system</description>
+
+  <modules>
+    <module>client</module>
+    <module>server</module>
+  </modules>
 
   <properties>
     <!-- The following paths need to be defined here as well as in the parent pom so that mvn can -->
@@ -29,6 +35,7 @@
     <findbugs.path>${project.parent.basedir}/build/findbugs/</findbugs.path>
     <failIfNoTests>false</failIfNoTests>
   </properties>
+<<<<<<< HEAD
 
   <dependencies>
     <!-- Internal dependencies -->
@@ -194,4 +201,6 @@
       </plugin>
     </plugins>
   </build>
+=======
+>>>>>>> 8ac0a8245403d8af4c8e60526b5fc25df659f038
 </project>

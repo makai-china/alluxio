@@ -29,7 +29,6 @@ public class ThriftUtilsTest {
     assertEquals(TTtlAction.Free.name().toLowerCase(), ThriftUtils.toThrift(TtlAction.FREE).name()
         .toLowerCase());
     assertEquals(100L, ThriftUtils.toThrift(getWorkerInfo()).getUsedBytes());
-    assertEquals("blockPath", ThriftUtils.toThrift(getLockBlockResult()).getBlockPath());
     assertEquals(100L, ThriftUtils.toThrift(getLineageInfo()).getId());
     assertEquals("info.log", ThriftUtils.toThrift(getJobConfInfo()).getOutputFile());
     assertEquals("rambo", ThriftUtils.toThrift(getFileInfo()).getName());
@@ -45,7 +44,6 @@ public class ThriftUtilsTest {
     assertEquals(TtlAction.FREE.name().toLowerCase(), ThriftUtils.fromThrift(TTtlAction.Free)
         .name().toLowerCase());
     assertEquals(100L, ThriftUtils.fromThrift(getWorkerInfoThrift()).getUsedBytes());
-    assertEquals("blockPath", ThriftUtils.fromThrift(getLockBlockResultThrift()).getBlockPath());
     assertEquals(100L, ThriftUtils.fromThrift(getLineageInfoThrift()).getId());
     assertEquals("info.log", ThriftUtils.fromThrift(getJobConfInfoThrift()).getOutputFile());
     assertEquals("rambo", ThriftUtils.fromThrift(getFileInfoThrift()).getName());
@@ -74,7 +72,7 @@ public class ThriftUtilsTest {
 
   private alluxio.thrift.BlockLocation getBlockLocationThrift() {
     return new alluxio.thrift.BlockLocation(100L, new alluxio.thrift.WorkerNetAddress("host", 0, 0,
-        0), "tierAlias");
+        0, ""), "tierAlias");
   }
 
   private CommandLineJobInfo getCommandLineJobInfo() {
@@ -141,18 +139,6 @@ public class ThriftUtilsTest {
             new alluxio.thrift.CommandLineJobInfo("command", new alluxio.thrift.JobConfInfo(
                 "outputFile")));
 
-  }
-
-  private LockBlockResult getLockBlockResult() {
-    LockBlockResult r = new LockBlockResult();
-    r.setBlockPath("blockPath");
-    return r;
-  }
-
-  private alluxio.thrift.LockBlockResult getLockBlockResultThrift() {
-    alluxio.thrift.LockBlockResult r = new alluxio.thrift.LockBlockResult();
-    r.setBlockPath("blockPath");
-    return r;
   }
 
   private WorkerInfo getWorkerInfo() {

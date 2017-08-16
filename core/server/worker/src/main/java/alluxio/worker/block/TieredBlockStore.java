@@ -72,8 +72,11 @@ import javax.annotation.concurrent.NotThreadSafe;
  * and guarded by {@link TieredBlockStore#mMetadataLock}. This is also a read/write lock and
  * coordinates different threads (clients) when accessing the shared data structure for metadata.
  * </li>
- * <li>Method {@link #createBlockMeta} does not acquire the block lock, because it only creates a
+ * <li>Method {@link #createBlock} does not acquire the block lock, because it only creates a
  * temp block which is only visible to its writer before committed (thus no concurrent access).</li>
+ * <li>Method {@link #abortBlock(long, long)} does not acquire the block lock, because only
+ * temporary blocks can be aborted, and they are only visible to their writers (thus no concurrent
+ * access).
  * <li>Eviction is done in {@link #freeSpaceInternal} and it is on the basis of best effort. For
  * operations that may trigger this eviction (e.g., move, create, requestSpace), retry is used</li>
  * </ul>
@@ -141,8 +144,24 @@ public final class TieredBlockStore implements BlockStore {
     if (hasBlock) {
       return lockId;
     }
+
     mLockManager.unlockBlock(lockId);
     throw new BlockDoesNotExistException(ExceptionMessage.NO_BLOCK_ID_FOUND, blockId);
+  }
+
+  @Override
+  public long lockBlockNoException(long sessionId, long blockId) {
+    long lockId = mLockManager.lockBlock(sessionId, blockId, BlockLockType.READ);
+    boolean hasBlock;
+    try (LockResource r = new LockResource(mMetadataReadLock)) {
+      hasBlock = mMetaManager.hasBlockMeta(blockId);
+    }
+    if (hasBlock) {
+      return lockId;
+    }
+
+    mLockManager.unlockBlockNoException(lockId);
+    return BlockLockManager.INVALID_LOCK_ID;
   }
 
   @Override
@@ -151,17 +170,19 @@ public final class TieredBlockStore implements BlockStore {
   }
 
   @Override
-  public void unlockBlock(long sessionId, long blockId) throws BlockDoesNotExistException {
-    mLockManager.unlockBlock(sessionId, blockId);
+  public boolean unlockBlock(long sessionId, long blockId) {
+    return mLockManager.unlockBlock(sessionId, blockId);
   }
 
   @Override
   public BlockWriter getBlockWriter(long sessionId, long blockId)
-      throws BlockDoesNotExistException, IOException {
+      throws BlockDoesNotExistException, BlockAlreadyExistsException, InvalidWorkerStateException,
+      IOException {
     // NOTE: a temp block is supposed to only be visible by its own writer, unnecessary to acquire
     // block lock here since no sharing
     // TODO(bin): Handle the case where multiple writers compete for the same block.
     try (LockResource r = new LockResource(mMetadataReadLock)) {
+      checkTempBlockOwnedBySession(sessionId, blockId);
       TempBlockMeta tempBlockMeta = mMetaManager.getTempBlockMeta(blockId);
       return new LocalFileBlockWriter(tempBlockMeta.getPath());
     }
@@ -178,13 +199,14 @@ public final class TieredBlockStore implements BlockStore {
   }
 
   @Override
-  public TempBlockMeta createBlockMeta(long sessionId, long blockId, BlockStoreLocation location,
+  public TempBlockMeta createBlock(long sessionId, long blockId, BlockStoreLocation location,
       long initialBlockSize)
           throws BlockAlreadyExistsException, WorkerOutOfSpaceException, IOException {
     for (int i = 0; i < MAX_RETRIES + 1; i++) {
       TempBlockMeta tempBlockMeta =
           createBlockMetaInternal(sessionId, blockId, location, initialBlockSize, true);
       if (tempBlockMeta != null) {
+        createBlockFile(tempBlockMeta.getPath());
         return tempBlockMeta;
       }
       if (i < MAX_RETRIES) {
@@ -214,6 +236,13 @@ public final class TieredBlockStore implements BlockStore {
     mLockManager.validateLock(sessionId, blockId, lockId);
     try (LockResource r = new LockResource(mMetadataReadLock)) {
       return mMetaManager.getBlockMeta(blockId);
+    }
+  }
+
+  @Override
+  public TempBlockMeta getTempBlockMeta(long sessionId, long blockId) {
+    try (LockResource r = new LockResource(mMetadataReadLock)) {
+      return mMetaManager.getTempBlockMetaOrNull(blockId);
     }
   }
 
@@ -428,30 +457,26 @@ public final class TieredBlockStore implements BlockStore {
    * @throws BlockDoesNotExistException if block id can not be found in temporary blocks
    * @throws BlockAlreadyExistsException if block id already exists in committed blocks
    * @throws InvalidWorkerStateException if block id is not owned by session id
-   * @throws IOException if I/O errors occur when deleting the block file
    */
   private void abortBlockInternal(long sessionId, long blockId) throws BlockDoesNotExistException,
       BlockAlreadyExistsException, InvalidWorkerStateException, IOException {
-    long lockId = mLockManager.lockBlock(sessionId, blockId, BlockLockType.WRITE);
-    try {
-      String path;
-      TempBlockMeta tempBlockMeta;
-      try (LockResource r = new LockResource(mMetadataReadLock)) {
-        checkTempBlockOwnedBySession(sessionId, blockId);
-        tempBlockMeta = mMetaManager.getTempBlockMeta(blockId);
-        path = tempBlockMeta.getPath();
-      }
 
-      // Heavy IO is guarded by block lock but not metadata lock. This may throw IOException.
-      Files.delete(Paths.get(path));
+    String path;
+    TempBlockMeta tempBlockMeta;
+    try (LockResource r = new LockResource(mMetadataReadLock)) {
+      checkTempBlockOwnedBySession(sessionId, blockId);
+      tempBlockMeta = mMetaManager.getTempBlockMeta(blockId);
+      path = tempBlockMeta.getPath();
+    }
 
-      try (LockResource r = new LockResource(mMetadataWriteLock)) {
-        mMetaManager.abortTempBlockMeta(tempBlockMeta);
-      } catch (BlockDoesNotExistException e) {
-        throw Throwables.propagate(e); // We shall never reach here
-      }
-    } finally {
-      mLockManager.unlockBlock(lockId);
+    // The metadata lock is released during heavy IO. The temp block is private to one session, so
+    // we do not lock it.
+    Files.delete(Paths.get(path));
+
+    try (LockResource r = new LockResource(mMetadataWriteLock)) {
+      mMetaManager.abortTempBlockMeta(tempBlockMeta);
+    } catch (BlockDoesNotExistException e) {
+      throw Throwables.propagate(e); // We shall never reach here
     }
   }
 
@@ -464,7 +489,6 @@ public final class TieredBlockStore implements BlockStore {
    * @throws BlockDoesNotExistException if block id can not be found in temporary blocks
    * @throws BlockAlreadyExistsException if block id already exists in committed blocks
    * @throws InvalidWorkerStateException if block id is not owned by session id
-   * @throws IOException if I/O errors occur when deleting the block file
    */
   private BlockStoreLocation commitBlockInternal(long sessionId, long blockId)
       throws BlockAlreadyExistsException, InvalidWorkerStateException, BlockDoesNotExistException,
@@ -505,8 +529,8 @@ public final class TieredBlockStore implements BlockStore {
    * Creates a temp block meta only if allocator finds available space. This method will not trigger
    * any eviction.
    *
-   * @param sessionId session Id
-   * @param blockId block Id
+   * @param sessionId session id
+   * @param blockId block id
    * @param location location to create the block
    * @param initialBlockSize initial block size in bytes
    * @param newBlock true if this temp block is created for a new block
@@ -549,7 +573,7 @@ public final class TieredBlockStore implements BlockStore {
   /**
    * Increases the temp block size only if this temp block's parent dir has enough available space.
    *
-   * @param blockId block Id
+   * @param blockId block id
    * @param additionalBytes additional bytes to request for this block
    * @return a pair of boolean and {@link BlockStoreLocation}. The boolean indicates if the
    *         operation succeeds and the {@link BlockStoreLocation} denotes where to free more space
@@ -580,11 +604,10 @@ public final class TieredBlockStore implements BlockStore {
    * Tries to get an eviction plan to free a certain amount of space in the given location, and
    * carries out this plan with the best effort.
    *
-   * @param sessionId the session Id
+   * @param sessionId the session id
    * @param availableBytes amount of space in bytes to free
    * @param location location of space
    * @throws WorkerOutOfSpaceException if it is impossible to achieve the free requirement
-   * @throws IOException if I/O errors occur when removing or moving block files
    */
   private void freeSpaceInternal(long sessionId, long availableBytes, BlockStoreLocation location)
       throws WorkerOutOfSpaceException, IOException {
@@ -679,15 +702,14 @@ public final class TieredBlockStore implements BlockStore {
    * Moves a block to new location only if allocator finds available space in newLocation. This
    * method will not trigger any eviction. Returns {@link MoveBlockResult}.
    *
-   * @param sessionId session Id
-   * @param blockId block Id
+   * @param sessionId session id
+   * @param blockId block id
    * @param oldLocation the source location of the block
    * @param newLocation new location to move this block
    * @return the resulting information about the move operation
    * @throws BlockDoesNotExistException if block is not found
-   * @throws BlockAlreadyExistsException if a block with same Id already exists in new location
+   * @throws BlockAlreadyExistsException if a block with same id already exists in new location
    * @throws InvalidWorkerStateException if the block to move is a temp block
-   * @throws IOException if I/O errors occur when moving block file
    */
   private MoveBlockResult moveBlockInternal(long sessionId, long blockId,
       BlockStoreLocation oldLocation, BlockStoreLocation newLocation)
@@ -758,12 +780,11 @@ public final class TieredBlockStore implements BlockStore {
   /**
    * Removes a block.
    *
-   * @param sessionId session Id
-   * @param blockId block Id
+   * @param sessionId session id
+   * @param blockId block id
    * @param location the source location of the block
    * @throws InvalidWorkerStateException if the block to remove is a temp block
    * @throws BlockDoesNotExistException if this block can not be found
-   * @throws IOException if I/O errors occur when removing this block file
    */
   private void removeBlockInternal(long sessionId, long blockId, BlockStoreLocation location)
       throws InvalidWorkerStateException, BlockDoesNotExistException, IOException {
@@ -794,6 +815,22 @@ public final class TieredBlockStore implements BlockStore {
     } finally {
       mLockManager.unlockBlock(lockId);
     }
+  }
+
+  /**
+   * Creates a file to represent a block denoted by the given block path. This file will be owned
+   * by the Alluxio worker but have 777 permissions so processes under users different from the
+   * user that launched the Alluxio worker can read and write to the file. The tiered storage
+   * directory has the sticky bit so only the worker user can delete or rename files it creates.
+   *
+   * @param blockPath the block path to create
+   */
+  // TODO(peis): Consider using domain socket to avoid setting the permission to 777.
+  private static void createBlockFile(String blockPath) throws IOException {
+    FileUtils.createBlockPath(blockPath);
+    FileUtils.createFile(blockPath);
+    FileUtils.changeLocalFileToFullPermission(blockPath);
+    LOG.debug("Created new file block, block path: {}", blockPath);
   }
 
   /**

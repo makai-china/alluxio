@@ -11,12 +11,7 @@
 
 package alluxio.security;
 
-import alluxio.Configuration;
-import alluxio.PropertyKey;
-
 import org.powermock.reflect.Whitebox;
-
-import java.io.IOException;
 
 /**
  * Utility methods for the tests using {@link LoginUser}.
@@ -38,13 +33,10 @@ public final class LoginUserTestUtils {
    * Resets the {@link LoginUser} and re-login with new user.
    *
    * @param user the new user
-   * @throws IOException if login fails
    */
-  public static void resetLoginUser(String user) throws IOException {
+  public static void resetLoginUser(String user) {
     synchronized (LoginUser.class) {
-      resetLoginUser();
-      Configuration.set(PropertyKey.SECURITY_LOGIN_USERNAME, user);
-      LoginUser.get();
+      Whitebox.setInternalState(LoginUser.class, "sLoginUser", new User(user));
     }
   }
 }
