@@ -31,7 +31,7 @@ import javax.security.sasl.AuthorizeCallback;
 /**
  * Tests the {@link PlainSaslServerCallbackHandler} class.
  */
-public class PlainSaslServerCallbackHandlerTest {
+public final class PlainSaslServerCallbackHandlerTest {
   private CallbackHandler mPlainServerCBHandler;
 
   /**
@@ -42,8 +42,6 @@ public class PlainSaslServerCallbackHandlerTest {
 
   /**
    * Sets up the configuration and callback handler before running a test.
-   *
-   * @throws Exception thrown if the authentication provider cannot be set up
    */
   @Before
   public void before() throws Exception {
@@ -65,8 +63,6 @@ public class PlainSaslServerCallbackHandlerTest {
 
   /**
    * Tests that the authentication callbacks matches.
-   *
-   * @throws Exception thrown if the handler fails
    */
   @Test
   public void authenticateNameMatch() throws Exception {

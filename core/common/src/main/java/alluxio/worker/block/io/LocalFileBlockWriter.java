@@ -15,6 +15,7 @@ import alluxio.util.io.BufferUtils;
 
 import com.google.common.base.Preconditions;
 import com.google.common.io.Closer;
+import io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -34,12 +35,13 @@ public final class LocalFileBlockWriter implements BlockWriter {
   private final RandomAccessFile mLocalFile;
   private final FileChannel mLocalFileChannel;
   private final Closer mCloser = Closer.create();
+  private long mPosition;
+  private boolean mClosed;
 
   /**
    * Constructs a Block writer given the file path of the block.
    *
    * @param path file path of the block
-   * @throws IOException if its file can not be open with "rw" mode
    */
   public LocalFileBlockWriter(String path) throws IOException {
     mFilePath = Preconditions.checkNotNull(path);
@@ -54,12 +56,30 @@ public final class LocalFileBlockWriter implements BlockWriter {
 
   @Override
   public long append(ByteBuffer inputBuf) throws IOException {
-    return write(mLocalFileChannel.size(), inputBuf.duplicate());
+    long bytesWritten = write(mLocalFileChannel.size(), inputBuf.duplicate());
+    mPosition += bytesWritten;
+    return bytesWritten;
+  }
+
+  @Override
+  public void transferFrom(ByteBuf buf) throws IOException {
+    mPosition += buf.readBytes(mLocalFileChannel, buf.readableBytes());
+  }
+
+  @Override
+  public long getPosition() {
+    return mPosition;
   }
 
   @Override
   public void close() throws IOException {
+    if (mClosed) {
+      return;
+    }
+    mClosed = true;
+
     mCloser.close();
+    mPosition = -1;
   }
 
   /**
@@ -68,7 +88,6 @@ public final class LocalFileBlockWriter implements BlockWriter {
    * @param offset starting offset of the block file to write
    * @param inputBuf {@link ByteBuffer} that input data is stored in
    * @return the size of data that was written
-   * @throws IOException if an I/O error occurs
    */
   private long write(long offset, ByteBuffer inputBuf) throws IOException {
     int inputBufLength = inputBuf.limit() - inputBuf.position();

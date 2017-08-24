@@ -36,27 +36,6 @@ public abstract class AbstractShellCommand implements ShellCommand {
             .hasArg(false)
             .desc("recursive")
             .build();
-  protected static final Option READONLY_OPTION =
-      Option.builder("readonly")
-          .required(false)
-          .hasArg(false)
-          .desc("readonly")
-          .build();
-  protected static final Option MOUNT_SHARED_OPTION =
-      Option.builder("shared")
-          .required(false)
-          .hasArg(false)
-          .desc("shared")
-          .build();
-
-  // TODO(gpang): Investigate property=value style of cmdline options. They didn't seem to
-  // support spaces in values.
-  protected static final Option PROPERTY_FILE_OPTION =
-      Option.builder("P")
-          .required(false)
-          .numberOfArgs(1)
-          .desc("properties file name")
-          .build();
   protected static final Option FORCE_OPTION =
       Option.builder("f")
           .required(false)
@@ -69,12 +48,32 @@ public abstract class AbstractShellCommand implements ShellCommand {
           .hasArg(false)
           .desc("list directories as plain files")
           .build();
+  protected static final Option LIST_PINNED_FILES_OPTION =
+          Option.builder("p")
+                  .required(false)
+                  .hasArg(false)
+                  .desc("list all pinned files")
+                  .build();
   protected static final Option FIX_INCONSISTENT_FILES =
       Option.builder("r")
           .required(false)
           .hasArg(false)
           .desc("repair inconsistent files")
           .build();
+  protected static final Option LIST_HUMAN_READABLE_OPTION =
+      Option.builder("h")
+          .required(false)
+          .hasArg(false)
+          .desc("print human-readable format sizes")
+          .build();
+
+  protected static final String REMOVE_UNCHECKED_OPTION_CHAR = "U";
+  protected static final Option REMOVE_UNCHECKED_OPTION =
+      Option.builder(REMOVE_UNCHECKED_OPTION_CHAR)
+            .required(false)
+            .hasArg(false)
+            .desc("remove directories without checking UFS contents are in sync")
+            .build();
 
   protected AbstractShellCommand(FileSystem fs) {
     mFileSystem = fs;
@@ -102,12 +101,8 @@ public abstract class AbstractShellCommand implements ShellCommand {
    */
   protected abstract int getNumOfArgs();
 
-  /**
-   * Gets the supported Options of the command.
-   *
-   * @return the Options
-   */
-  protected Options getOptions() {
+  @Override
+  public Options getOptions() {
     return new Options();
   }
 
@@ -118,10 +113,9 @@ public abstract class AbstractShellCommand implements ShellCommand {
     CommandLine cmd;
 
     try {
-      cmd = parser.parse(opts, args, true /* stopAtNonOption */);
+      cmd = parser.parse(opts, args);
     } catch (ParseException e) {
-      // TODO(ifcharming): improve the error message when an unregistered option appears
-      System.err.println("Unable to parse input args: " + e.getMessage());
+      System.err.println(String.format("%s: %s", getCommandName(), e.getMessage()));
       return null;
     }
 

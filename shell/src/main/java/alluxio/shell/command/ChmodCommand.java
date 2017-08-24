@@ -53,7 +53,7 @@ public final class ChmodCommand extends AbstractShellCommand {
   }
 
   @Override
-  protected Options getOptions() {
+  public Options getOptions() {
     return new Options().addOption(RECURSIVE_OPTION);
   }
 
@@ -63,8 +63,6 @@ public final class ChmodCommand extends AbstractShellCommand {
    * @param path The {@link AlluxioURI} path as the input of the command
    * @param modeStr The new permission to be updated to the file or directory
    * @param recursive Whether change the permission recursively
-   * @throws AlluxioException when Alluxio exception occurs
-   * @throws IOException when non-Alluxio exception occurs
    */
   private void chmod(AlluxioURI path, String modeStr, boolean recursive) throws
       AlluxioException, IOException {
@@ -77,11 +75,12 @@ public final class ChmodCommand extends AbstractShellCommand {
   }
 
   @Override
-  public void run(CommandLine cl) throws AlluxioException, IOException {
+  public int run(CommandLine cl) throws AlluxioException, IOException {
     String[] args = cl.getArgs();
     String modeStr = args[0];
     AlluxioURI path = new AlluxioURI(args[1]);
     chmod(path, modeStr, cl.hasOption("R"));
+    return 0;
   }
 
   @Override

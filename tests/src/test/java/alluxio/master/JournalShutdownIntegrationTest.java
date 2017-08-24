@@ -13,18 +13,23 @@ package alluxio.master;
 
 import alluxio.AlluxioURI;
 import alluxio.AuthenticatedUserRule;
+import alluxio.BaseIntegrationTest;
 import alluxio.Configuration;
 import alluxio.ConfigurationTestUtils;
 import alluxio.Constants;
 import alluxio.PropertyKey;
 import alluxio.SystemPropertyRule;
 import alluxio.client.WriteType;
-import alluxio.client.block.BlockWorkerClientTestUtils;
 import alluxio.client.file.FileSystem;
 import alluxio.client.file.FileSystemContext;
-import alluxio.client.file.FileSystemWorkerClientTestUtils;
 import alluxio.master.file.FileSystemMaster;
 import alluxio.master.file.options.ListStatusOptions;
+import alluxio.underfs.UnderFileSystem;
+import alluxio.underfs.UnderFileSystemConfiguration;
+import alluxio.underfs.UnderFileSystemFactoryRegistry;
+import alluxio.underfs.sleepfs.SleepingUnderFileSystem;
+import alluxio.underfs.sleepfs.SleepingUnderFileSystemFactory;
+import alluxio.underfs.sleepfs.SleepingUnderFileSystemOptions;
 import alluxio.util.CommonUtils;
 import alluxio.util.IdUtils;
 
@@ -34,6 +39,7 @@ import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -41,10 +47,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Test master journal for cluster terminating. Assert that test can replay the editlog and
- * reproduce the correct state. Test both the single master(alluxio) and multi masters(alluxio-ft).
+ * Test master journal for cluster terminating. Assert that test can replay the log and reproduce
+ * the correct state. Test both the single master (alluxio) and multi masters (alluxio-ft).
  */
-public class JournalShutdownIntegrationTest {
+public class JournalShutdownIntegrationTest extends BaseIntegrationTest {
   @Rule
   public AuthenticatedUserRule mAuthenticatedUser = new AuthenticatedUserRule("test");
 
@@ -65,8 +71,6 @@ public class JournalShutdownIntegrationTest {
   public final void after() throws Exception {
     mExecutorsForClient.shutdown();
     ConfigurationTestUtils.resetConfiguration();
-    BlockWorkerClientTestUtils.reset();
-    FileSystemWorkerClientTestUtils.reset();
     FileSystemContext.INSTANCE.reset();
   }
 
@@ -74,6 +78,8 @@ public class JournalShutdownIntegrationTest {
   public final void before() throws Exception {
     mExecutorsForClient = Executors.newFixedThreadPool(1);
     Configuration.set(PropertyKey.MASTER_JOURNAL_TAILER_SHUTDOWN_QUIET_WAIT_TIME_MS, 100);
+    Configuration.set(PropertyKey.MASTER_JOURNAL_CHECKPOINT_PERIOD_ENTRIES, 2);
+    Configuration.set(PropertyKey.MASTER_JOURNAL_LOG_SIZE_BYTES_MAX, 32);
   }
 
   @Test
@@ -82,20 +88,6 @@ public class JournalShutdownIntegrationTest {
     runCreateFileThread(cluster.getClient());
     // Shutdown the cluster
     cluster.stopFS();
-    CommonUtils.sleepMs(TEST_TIME_MS);
-    awaitClientTermination();
-    reproduceAndCheckState(mCreateFileThread.getSuccessNum());
-    // clean up
-    cluster.stopUFS();
-  }
-
-  @Test
-  public void singleMasterJournalCrashIntegration() throws Exception {
-    LocalAlluxioCluster cluster = setupSingleMasterCluster();
-    runCreateFileThread(cluster.getClient());
-    cluster.stopWorkers();
-    // Crash the master
-    cluster.getMaster().stop();
     CommonUtils.sleepMs(TEST_TIME_MS);
     awaitClientTermination();
     reproduceAndCheckState(mCreateFileThread.getSuccessNum());
@@ -119,6 +111,60 @@ public class JournalShutdownIntegrationTest {
     cluster.stopUFS();
   }
 
+  @Test
+  public void singleMasterMountUnmountJournal() throws Exception {
+    LocalAlluxioCluster cluster = setupSingleMasterCluster();
+    UnderFileSystem ufs = mountUnmount(cluster.getClient());
+    // Shutdown the cluster
+    cluster.stopFS();
+    CommonUtils.sleepMs(TEST_TIME_MS);
+    awaitClientTermination();
+    // Reject connection from Alluxio
+    Mockito.doThrow(new IOException()).when(ufs).connectFromMaster(Mockito.anyString());
+    createFsMasterFromJournal();
+    // clean up
+    cluster.stopUFS();
+  }
+
+  @Test
+  public void multiMasterMountUnmountJournal() throws Exception {
+    MultiMasterLocalAlluxioCluster cluster = setupMultiMasterCluster();
+    UnderFileSystem ufs = mountUnmount(cluster.getClient());
+    // Kill the leader one by one.
+    for (int kills = 0; kills < TEST_NUM_MASTERS; kills++) {
+      cluster.waitForNewMaster(120 * Constants.SECOND_MS);
+      Assert.assertTrue(cluster.stopLeader());
+    }
+    // Shutdown the cluster
+    cluster.stopFS();
+    CommonUtils.sleepMs(TEST_TIME_MS);
+    awaitClientTermination();
+    // Reject connection from Alluxio
+    Mockito.doThrow(new IOException()).when(ufs).connectFromMaster(Mockito.anyString());
+    createFsMasterFromJournal();
+    // clean up
+    cluster.stopUFS();
+  }
+
+  /**
+   * @param fs Filesystem client
+   * @return a spied UFS mounted to and then unmounted from fs
+   */
+  private UnderFileSystem mountUnmount(FileSystem fs) throws Exception {
+    SleepingUnderFileSystem sleepingUfs = Mockito.spy(
+        new SleepingUnderFileSystem(new AlluxioURI("sleep:///"),
+            new SleepingUnderFileSystemOptions(), UnderFileSystemConfiguration.defaults()));
+    SleepingUnderFileSystemFactory sleepingUfsFactory =
+        new SleepingUnderFileSystemFactory(sleepingUfs);
+    UnderFileSystemFactoryRegistry.register(sleepingUfsFactory);
+    fs.mount(new AlluxioURI("/mnt"), new AlluxioURI("sleep:///"));
+    fs.unmount(new AlluxioURI("/mnt"));
+    return sleepingUfs;
+  }
+
+  /**
+   * Waits for the client to terminate.
+   */
   private void awaitClientTermination() throws Exception {
     // Ensure the client threads are stopped.
     mExecutorsForClient.shutdownNow();
@@ -127,7 +173,10 @@ public class JournalShutdownIntegrationTest {
     }
   }
 
-  private FileSystemMaster createFsMasterFromJournal() throws IOException {
+  /**
+   * Creates file system master from journal.
+   */
+  private MasterRegistry createFsMasterFromJournal() throws Exception {
     return MasterTestUtils.createLeaderFileSystemMasterFromJournal();
   }
 
@@ -136,7 +185,8 @@ public class JournalShutdownIntegrationTest {
    */
   private void reproduceAndCheckState(int successFiles) throws Exception {
     Assert.assertNotEquals(successFiles, 0);
-    FileSystemMaster fsMaster = createFsMasterFromJournal();
+    MasterRegistry registry = createFsMasterFromJournal();
+    FileSystemMaster fsMaster = registry.get(FileSystemMaster.class);
 
     int actualFiles =
         fsMaster.listStatus(new AlluxioURI(TEST_FILE_DIR), ListStatusOptions.defaults())
@@ -146,9 +196,12 @@ public class JournalShutdownIntegrationTest {
       Assert.assertTrue(
           fsMaster.getFileId(new AlluxioURI(TEST_FILE_DIR + f)) != IdUtils.INVALID_FILE_ID);
     }
-    fsMaster.stop();
+    registry.stop();
   }
 
+  /**
+   * Sets up and starts a multi-master cluster.
+   */
   private MultiMasterLocalAlluxioCluster setupMultiMasterCluster() throws Exception {
     // Setup and start the alluxio-ft cluster.
     MultiMasterLocalAlluxioCluster cluster =
@@ -158,6 +211,9 @@ public class JournalShutdownIntegrationTest {
     return cluster;
   }
 
+  /**
+   * Sets up and starts a single master cluster.
+   */
   private LocalAlluxioCluster setupSingleMasterCluster() throws Exception {
     // Setup and start the local alluxio cluster.
     LocalAlluxioCluster cluster = new LocalAlluxioCluster();

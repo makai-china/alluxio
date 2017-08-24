@@ -21,13 +21,18 @@ import alluxio.exception.ExceptionMessage;
 import alluxio.exception.FileAlreadyExistsException;
 import alluxio.exception.FileDoesNotExistException;
 import alluxio.exception.InvalidPathException;
+import alluxio.master.MasterRegistry;
 import alluxio.master.block.BlockMaster;
+import alluxio.master.block.BlockMasterFactory;
 import alluxio.master.file.options.CreateDirectoryOptions;
 import alluxio.master.file.options.CreateFileOptions;
 import alluxio.master.file.options.CreatePathOptions;
+import alluxio.master.file.options.DeleteOptions;
+import alluxio.master.journal.Journal;
 import alluxio.master.journal.JournalFactory;
-import alluxio.master.journal.JournalOutputStream;
+import alluxio.master.journal.NoopJournalContext;
 import alluxio.security.authorization.Mode;
+import alluxio.underfs.UfsManager;
 import alluxio.util.CommonUtils;
 
 import com.google.common.collect.Lists;
@@ -43,7 +48,9 @@ import org.junit.rules.TemporaryFolder;
 import org.mockito.Mockito;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -64,6 +71,7 @@ public final class InodeTreeTest {
   private static CreateFileOptions sNestedFileOptions;
   private static CreateDirectoryOptions sNestedDirectoryOptions;
   private InodeTree mTree;
+  private MasterRegistry mRegistry;
 
   /** Rule to create a new temporary folder during each test. */
   @Rule
@@ -78,15 +86,17 @@ public final class InodeTreeTest {
    */
   @Before
   public void before() throws Exception {
-    JournalFactory journalFactory =
-        new JournalFactory.ReadWrite(mTestFolder.newFolder().getAbsolutePath());
+    mRegistry = new MasterRegistry();
+    JournalFactory factory =
+        new Journal.Factory(new URI(mTestFolder.newFolder().getAbsolutePath()));
 
-    BlockMaster blockMaster = new BlockMaster(journalFactory);
+    BlockMaster blockMaster = new BlockMasterFactory().create(mRegistry, factory);
     InodeDirectoryIdGenerator directoryIdGenerator = new InodeDirectoryIdGenerator(blockMaster);
-    MountTable mountTable = new MountTable();
+    UfsManager ufsManager = Mockito.mock(UfsManager.class);
+    MountTable mountTable = new MountTable(ufsManager);
     mTree = new InodeTree(blockMaster, directoryIdGenerator, mountTable);
 
-    blockMaster.start(true);
+    mRegistry.start(true);
 
     Configuration.set(PropertyKey.SECURITY_AUTHORIZATION_PERMISSION_ENABLED, "true");
     Configuration.set(PropertyKey.SECURITY_AUTHORIZATION_PERMISSION_SUPERGROUP, "test-supergroup");
@@ -94,7 +104,8 @@ public final class InodeTreeTest {
   }
 
   @After
-  public void after() {
+  public void after() throws Exception {
+    mRegistry.stop();
     ConfigurationTestUtils.resetConfiguration();
   }
 
@@ -465,7 +476,7 @@ public final class InodeTreeTest {
   }
 
   /**
-   * Tests the {@link InodeTree#deleteInode(LockedInodePath)} method.
+   * Tests deleting a nested inode.
    */
   @Test
   public void deleteInode() throws Exception {
@@ -638,7 +649,7 @@ public final class InodeTreeTest {
       throws FileAlreadyExistsException, BlockInfoException, InvalidPathException, IOException,
       FileDoesNotExistException {
     try (LockedInodePath inodePath = root.lockInodePath(path, InodeTree.LockMode.WRITE)) {
-      return root.createPath(inodePath, options);
+      return root.createPath(inodePath, options, new NoopJournalContext());
     }
   }
 
@@ -652,18 +663,19 @@ public final class InodeTreeTest {
   // Helper to delete an inode by path.
   private static void deleteInodeByPath(InodeTree root, AlluxioURI path) throws Exception {
     try (LockedInodePath inodePath = root.lockFullInodePath(path, InodeTree.LockMode.WRITE)) {
-      root.deleteInode(inodePath);
+      root.deleteInode(inodePath, System.currentTimeMillis(), DeleteOptions.defaults(),
+          NoopJournalContext.INSTANCE);
     }
   }
 
   // helper for verifying that correct objects were journaled to the output stream
   private static void verifyJournal(InodeTree root, List<Inode<?>> journaled) throws Exception {
-    JournalOutputStream mockOutputStream = Mockito.mock(JournalOutputStream.class);
-    root.streamToJournalCheckpoint(mockOutputStream);
+    Iterator<alluxio.proto.journal.Journal.JournalEntry> it = root.getJournalEntryIterator();
     for (Inode<?> node : journaled) {
-      Mockito.verify(mockOutputStream).writeEntry(node.toJournalEntry());
+      Assert.assertTrue(it.hasNext());
+      Assert.assertEquals(node.toJournalEntry(), it.next());
     }
-    Mockito.verifyNoMoreInteractions(mockOutputStream);
+    Assert.assertTrue(!it.hasNext());
   }
 
   // verify that the tree has the given children

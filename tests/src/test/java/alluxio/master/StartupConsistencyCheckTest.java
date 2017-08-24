@@ -14,6 +14,7 @@ package alluxio.master;
 import alluxio.AlluxioURI;
 import alluxio.LocalAlluxioClusterResource;
 import alluxio.PropertyKey;
+import alluxio.BaseIntegrationTest;
 import alluxio.client.WriteType;
 import alluxio.client.file.FileSystem;
 import alluxio.client.file.options.CreateDirectoryOptions;
@@ -34,7 +35,7 @@ import java.util.List;
 /**
  * Tests the consistency check which happens on master start up.
  */
-public class StartupConsistencyCheckTest {
+public class StartupConsistencyCheckTest extends BaseIntegrationTest {
   private static final AlluxioURI TOP_LEVEL_FILE = new AlluxioURI("/file");
   private static final AlluxioURI TOP_LEVEL_DIR = new AlluxioURI("/dir");
   private static final AlluxioURI SECOND_LEVEL_FILE = new AlluxioURI("/dir/file");
@@ -73,9 +74,11 @@ public class StartupConsistencyCheckTest {
   @Test
   public void consistent() throws Exception {
     mCluster.stopFS();
-    final FileSystemMaster master = MasterTestUtils.createLeaderFileSystemMasterFromJournal();
+    MasterRegistry registry = MasterTestUtils.createLeaderFileSystemMasterFromJournal();
+    FileSystemMaster master = registry.get(FileSystemMaster.class);
     MasterTestUtils.waitForStartupConsistencyCheck(master);
     Assert.assertTrue(master.getStartupConsistencyCheck().getInconsistentUris().isEmpty());
+    registry.stop();
   }
 
   /**
@@ -87,15 +90,18 @@ public class StartupConsistencyCheckTest {
     String topLevelFileUfsPath = mFileSystem.getStatus(TOP_LEVEL_FILE).getUfsPath();
     String secondLevelDirUfsPath = mFileSystem.getStatus(SECOND_LEVEL_DIR).getUfsPath();
     mCluster.stopFS();
-    UnderFileSystem ufs = UnderFileSystem.Factory.get(topLevelFileUfsPath);
+    UnderFileSystem ufs = UnderFileSystem.Factory.create(topLevelFileUfsPath);
     ufs.deleteFile(topLevelFileUfsPath);
     ufs.deleteDirectory(secondLevelDirUfsPath, DeleteOptions.defaults().setRecursive(true));
-    final FileSystemMaster master = MasterTestUtils.createLeaderFileSystemMasterFromJournal();
+    MasterRegistry registry = MasterTestUtils.createLeaderFileSystemMasterFromJournal();
+    FileSystemMaster master = registry.get(FileSystemMaster.class);
     MasterTestUtils.waitForStartupConsistencyCheck(master);
-    List expected = Lists.newArrayList(TOP_LEVEL_FILE, SECOND_LEVEL_DIR, THIRD_LEVEL_FILE);
-    List result = master.getStartupConsistencyCheck().getInconsistentUris();
+    List<AlluxioURI> expected =
+        Lists.newArrayList(TOP_LEVEL_FILE, SECOND_LEVEL_DIR, THIRD_LEVEL_FILE);
+    List<AlluxioURI> result = master.getStartupConsistencyCheck().getInconsistentUris();
     Collections.sort(expected);
     Collections.sort(result);
     Assert.assertEquals(expected, result);
+    registry.stop();
   }
 }

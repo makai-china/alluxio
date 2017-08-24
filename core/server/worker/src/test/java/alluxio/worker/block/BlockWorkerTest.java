@@ -22,9 +22,10 @@ import alluxio.Configuration;
 import alluxio.ConfigurationTestUtils;
 import alluxio.Constants;
 import alluxio.PropertyKey;
-import alluxio.PropertyKeyFormat;
 import alluxio.Sessions;
 import alluxio.exception.BlockAlreadyExistsException;
+import alluxio.proto.dataserver.Protocol;
+import alluxio.underfs.UfsManager;
 import alluxio.underfs.UnderFileSystem;
 import alluxio.util.io.PathUtils;
 import alluxio.worker.block.meta.BlockMeta;
@@ -33,6 +34,7 @@ import alluxio.worker.block.meta.TempBlockMeta;
 import alluxio.worker.file.FileSystemMasterClient;
 
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -48,16 +50,16 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Unit tests for {@link DefaultBlockWorker}.
  */
 @RunWith(PowerMockRunner.class)
-@PrepareForTest({BlockMasterClient.class, FileSystemMasterClient.class,
-    BlockHeartbeatReporter.class, BlockMetricsReporter.class, BlockMeta.class,
-    BlockStoreLocation.class, BlockStoreMeta.class, StorageDir.class, Configuration.class,
-    UnderFileSystem.class, BlockWorker.class, Sessions.class})
+@PrepareForTest(
+    {BlockMasterClient.class, FileSystemMasterClient.class, BlockHeartbeatReporter.class,
+        BlockMetricsReporter.class, BlockMeta.class, BlockStoreLocation.class, BlockStoreMeta.class,
+        StorageDir.class, Configuration.class, UnderFileSystem.class, BlockWorker.class,
+        Sessions.class})
 public class BlockWorkerTest {
 
   /** Rule to create a new temporary folder during each test. */
@@ -70,6 +72,7 @@ public class BlockWorkerTest {
   private Random mRandom;
   private Sessions mSessions;
   private BlockWorker mBlockWorker;
+  private UfsManager mUfsManager;
 
   /**
    * Sets up all dependencies before a test runs.
@@ -81,10 +84,11 @@ public class BlockWorkerTest {
     mBlockStore = PowerMockito.mock(BlockStore.class);
     mFileSystemMasterClient = PowerMockito.mock(FileSystemMasterClient.class);
     mSessions = PowerMockito.mock(Sessions.class);
+    mUfsManager = Mockito.mock(UfsManager.class);
 
     Configuration.set(PropertyKey.WORKER_TIERED_STORE_LEVELS, "2");
 
-    Configuration.set(PropertyKeyFormat.WORKER_TIERED_STORE_LEVEL_DIRS_QUOTA_FORMAT.format(1),
+    Configuration.set(PropertyKey.Template.WORKER_TIERED_STORE_LEVEL_DIRS_QUOTA.format(1),
         String.valueOf(Constants.GB));
     Configuration.set(PropertyKey.WORKER_TIERED_STORE_LEVEL0_DIRS_PATH,
         mFolder.newFolder().getAbsolutePath());
@@ -94,8 +98,9 @@ public class BlockWorkerTest {
     Configuration.set(PropertyKey.WORKER_TIERED_STORE_LEVEL1_DIRS_PATH,
         mFolder.newFolder().getAbsolutePath());
 
-    mBlockWorker = new DefaultBlockWorker(mBlockMasterClient, mFileSystemMasterClient, mSessions,
-        mBlockStore, new AtomicReference<>(10L));
+    mBlockWorker =
+        new DefaultBlockWorker(mBlockMasterClient, mFileSystemMasterClient, mSessions, mBlockStore,
+            mUfsManager);
   }
 
   /**
@@ -104,6 +109,35 @@ public class BlockWorkerTest {
   @After
   public void after() throws IOException {
     ConfigurationTestUtils.resetConfiguration();
+  }
+
+  @Test
+  public void openUnderFileSystemBlock() throws Exception {
+    long blockId = mRandom.nextLong();
+    Protocol.OpenUfsBlockOptions openUfsBlockOptions =
+        Protocol.OpenUfsBlockOptions.newBuilder().setMaxUfsReadConcurrency(10).setUfsPath("/a")
+            .build();
+
+    long sessionId = 1;
+    for (; sessionId < 11; sessionId++) {
+      Assert.assertTrue(mBlockWorker.openUfsBlock(sessionId, blockId, openUfsBlockOptions));
+    }
+    Assert.assertFalse(mBlockWorker.openUfsBlock(sessionId, blockId, openUfsBlockOptions));
+  }
+
+  @Test
+  public void closeUnderFileSystemBlock() throws Exception {
+    long blockId = mRandom.nextLong();
+    Protocol.OpenUfsBlockOptions openUfsBlockOptions =
+        Protocol.OpenUfsBlockOptions.newBuilder().setMaxUfsReadConcurrency(10).setUfsPath("/a")
+            .build();
+
+    long sessionId = 1;
+    for (; sessionId < 11; sessionId++) {
+      Assert.assertTrue(mBlockWorker.openUfsBlock(sessionId, blockId, openUfsBlockOptions));
+      mBlockWorker.closeUfsBlock(sessionId, blockId);
+    }
+    Assert.assertTrue(mBlockWorker.openUfsBlock(sessionId, blockId, openUfsBlockOptions));
   }
 
   /**
@@ -204,7 +238,7 @@ public class BlockWorkerTest {
     StorageDir storageDir = Mockito.mock(StorageDir.class);
     TempBlockMeta meta = new TempBlockMeta(sessionId, blockId, initialBytes, storageDir);
 
-    when(mBlockStore.createBlockMeta(sessionId, blockId, location, initialBytes))
+    when(mBlockStore.createBlock(sessionId, blockId, location, initialBytes))
         .thenReturn(meta);
     when(storageDir.getDirPath()).thenReturn("/tmp");
     assertEquals(
@@ -227,7 +261,7 @@ public class BlockWorkerTest {
     StorageDir storageDir = Mockito.mock(StorageDir.class);
     TempBlockMeta meta = new TempBlockMeta(sessionId, blockId, initialBytes, storageDir);
 
-    when(mBlockStore.createBlockMeta(sessionId, blockId, location, initialBytes))
+    when(mBlockStore.createBlock(sessionId, blockId, location, initialBytes))
         .thenReturn(meta);
     when(storageDir.getDirPath()).thenReturn("/tmp");
     assertEquals(
@@ -249,7 +283,7 @@ public class BlockWorkerTest {
     StorageDir storageDir = Mockito.mock(StorageDir.class);
     TempBlockMeta meta = new TempBlockMeta(sessionId, blockId, initialBytes, storageDir);
 
-    when(mBlockStore.createBlockMeta(sessionId, blockId, location, initialBytes))
+    when(mBlockStore.createBlock(sessionId, blockId, location, initialBytes))
         .thenReturn(meta);
     when(storageDir.getDirPath()).thenReturn("/tmp");
     assertEquals(PathUtils.concatPath("/tmp", ".tmp_blocks", sessionId % 1024,

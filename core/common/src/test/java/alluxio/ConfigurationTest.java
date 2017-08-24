@@ -13,6 +13,7 @@ package alluxio;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
+import org.hamcrest.CoreMatchers;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Rule;
@@ -20,8 +21,11 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -42,8 +46,8 @@ public class ConfigurationTest {
   @Test
   public void defaultLoggerCorrectlyLoaded() throws Exception {
     // Avoid interference from system properties. site-properties will not be loaded during tests
-    try (SetAndRestoreSystemProperty p =
-        new SetAndRestoreSystemProperty(PropertyKey.LOGGER_TYPE.toString(), null)) {
+    try (Closeable p =
+        new SystemPropertyRule(PropertyKey.LOGGER_TYPE.toString(), null).toResource()) {
       String loggerType = Configuration.get(PropertyKey.LOGGER_TYPE);
       Assert.assertEquals("Console", loggerType);
     }
@@ -221,6 +225,151 @@ public class ConfigurationTest {
   }
 
   @Test
+  public void getMs() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "100");
+    Assert.assertEquals(100,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsMS() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "100ms");
+    Assert.assertEquals(100,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsMillisecond() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "100millisecond");
+    Assert.assertEquals(100,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsS() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10s");
+    Assert.assertEquals(10 * Constants.SECOND,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsSUppercase() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10S");
+    Assert.assertEquals(10 * Constants.SECOND,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsSEC() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10sec");
+    Assert.assertEquals(10 * Constants.SECOND,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsSecond() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10second");
+    Assert.assertEquals(10 * Constants.SECOND,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsM() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10m");
+    Assert.assertEquals(10 * Constants.MINUTE,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsMIN() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10min");
+    Assert.assertEquals(10 * Constants.MINUTE,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsMinute() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10minute");
+    Assert.assertEquals(10 * Constants.MINUTE,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsH() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10h");
+    Assert.assertEquals(10 * Constants.HOUR,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsHR() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10hr");
+    Assert.assertEquals(10 * Constants.HOUR,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsHour() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10hour");
+    Assert.assertEquals(10 * Constants.HOUR,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsD() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10d");
+    Assert.assertEquals(10 * Constants.DAY,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getMsDay() {
+    Configuration.set(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS, "10day");
+    Assert.assertEquals(10 * Constants.DAY,
+        Configuration.getMs(PropertyKey.PROXY_STREAM_CACHE_TIMEOUT_MS));
+  }
+
+  @Test
+  public void getNestedProperties() {
+    Configuration.set(
+        PropertyKey.Template.MASTER_MOUNT_TABLE_OPTION_PROPERTY.format("foo",
+            PropertyKey.WEB_THREADS.toString()), "val1");
+    Configuration.set(
+        PropertyKey.Template.MASTER_MOUNT_TABLE_OPTION_PROPERTY.format("foo",
+            "alluxio.unknown.property"), "val2");
+    Map<String, String> expected = new HashMap<>();
+    expected.put(PropertyKey.WEB_THREADS.toString(), "val1");
+    expected.put("alluxio.unknown.property", "val2");
+    Assert.assertThat(Configuration.getNestedProperties(
+        PropertyKey.Template.MASTER_MOUNT_TABLE_OPTION.format("foo")),
+        CoreMatchers.is(expected));
+  }
+
+  @Test
+  public void getNestedPropertiesEmptyTrailingProperty() {
+    Configuration.set(PropertyKey.Template.MASTER_MOUNT_TABLE_OPTION_PROPERTY
+        .format("foo", ""), "val");
+    Map<String, String> empty = new HashMap<>();
+    Assert.assertThat(Configuration.getNestedProperties(
+        PropertyKey.Template.MASTER_MOUNT_TABLE_OPTION.format("foo")),
+        CoreMatchers.is(empty));
+  }
+
+  @Test
+  public void getNestedPropertiesWrongPrefix() {
+    Configuration.set(
+        PropertyKey.Template.MASTER_MOUNT_TABLE_OPTION_PROPERTY.format("foo",
+            PropertyKey.WEB_THREADS.toString()),
+        "val");
+    Map<String, String> empty = new HashMap<>();
+    Assert.assertThat(Configuration.getNestedProperties(PropertyKey.HOME),
+        CoreMatchers.is(empty));
+    Assert.assertThat(Configuration.getNestedProperties(
+        PropertyKey.Template.MASTER_MOUNT_TABLE_OPTION.format("bar")),
+        CoreMatchers.is(empty));
+  }
+
+  @Test
   public void getClassTest() { // The name getClass is already reserved.
     Configuration.set(PropertyKey.WEB_THREADS, "java.lang.String");
     Assert.assertEquals(String.class, Configuration.getClass(PropertyKey.WEB_THREADS));
@@ -264,16 +413,16 @@ public class ConfigurationTest {
 
   @Test
   public void systemVariableSubstitution() throws Exception {
-    try (SetAndRestoreSystemProperty c =
-        new SetAndRestoreSystemProperty(PropertyKey.MASTER_HOSTNAME.toString(), "new_master")) {
-      Configuration.defaultInit();
+    try (Closeable p =
+        new SystemPropertyRule(PropertyKey.MASTER_HOSTNAME.toString(), "new_master").toResource()) {
+      Configuration.init();
       Assert.assertEquals("new_master", Configuration.get(PropertyKey.MASTER_HOSTNAME));
     }
   }
 
   @Test
   public void userFileBufferBytesOverFlowException() {
-    mThrown.expect(IllegalArgumentException.class);
+    mThrown.expect(IllegalStateException.class);
     Configuration.set(PropertyKey.USER_FILE_BUFFER_BYTES,
         String.valueOf(Integer.MAX_VALUE + 1) + "B");
   }
@@ -321,12 +470,11 @@ public class ConfigurationTest {
     props.store(new FileOutputStream(propsFile), "ignored header");
     // Avoid interference from system properties. Reset SITE_CONF_DIR to include the temp
     // site-properties file
-    try (SetAndRestoreSystemProperty p1 =
-             new SetAndRestoreSystemProperty(PropertyKey.LOGGER_TYPE.toString(), null);
-         SetAndRestoreSystemProperty p2 =
-             new SetAndRestoreSystemProperty(PropertyKey.SITE_CONF_DIR.toString(),
-                 mFolder.getRoot().getAbsolutePath())) {
-      Configuration.defaultInit();
+    HashMap<String, String> sysProps = new HashMap<>();
+    sysProps.put(PropertyKey.LOGGER_TYPE.toString(), null);
+    sysProps.put(PropertyKey.SITE_CONF_DIR.toString(), mFolder.getRoot().getAbsolutePath());
+    try (Closeable p = new SystemPropertyRule(sysProps).toResource()) {
+      Configuration.init();
       Assert.assertEquals(PropertyKey.LOGGER_TYPE.getDefaultValue(),
           Configuration.get(PropertyKey.LOGGER_TYPE));
     }
@@ -340,14 +488,12 @@ public class ConfigurationTest {
     props.store(new FileOutputStream(propsFile), "ignored header");
     // Avoid interference from system properties. Reset SITE_CONF_DIR to include the temp
     // site-properties file
-    try (SetAndRestoreSystemProperty p1 =
-             new SetAndRestoreSystemProperty(PropertyKey.LOGGER_TYPE.toString(), null);
-         SetAndRestoreSystemProperty p2 =
-             new SetAndRestoreSystemProperty(PropertyKey.SITE_CONF_DIR.toString(),
-                 mFolder.getRoot().getAbsolutePath());
-         SetAndRestoreSystemProperty p3 =
-             new SetAndRestoreSystemProperty(PropertyKey.TEST_MODE.toString(), "false")) {
-      Configuration.defaultInit();
+    HashMap<String, String> sysProps = new HashMap<>();
+    sysProps.put(PropertyKey.LOGGER_TYPE.toString(), null);
+    sysProps.put(PropertyKey.SITE_CONF_DIR.toString(), mFolder.getRoot().getAbsolutePath());
+    sysProps.put(PropertyKey.TEST_MODE.toString(), "false");
+    try (Closeable p = new SystemPropertyRule(sysProps).toResource()) {
+      Configuration.init();
       Assert.assertEquals("TEST_LOGGER", Configuration.get(PropertyKey.LOGGER_TYPE));
     }
   }

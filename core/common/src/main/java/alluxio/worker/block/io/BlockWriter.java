@@ -11,6 +11,8 @@
 
 package alluxio.worker.block.io;
 
+import io.netty.buffer.ByteBuf;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -27,7 +29,6 @@ public interface BlockWriter extends Closeable {
    *
    * @param inputBuf {@link ByteBuffer} that input data is stored in
    * @return the size of data that was appended in bytes
-   * @throws IOException if the operation fails
    */
   long append(ByteBuffer inputBuf) throws IOException;
 
@@ -37,4 +38,17 @@ public interface BlockWriter extends Closeable {
    * @return channel
    */
   GatheringByteChannel getChannel();
+
+  /**
+   * Transfers buf.readableBytes() bytes to the this block writer from the given buf.
+   * This is only called in the netty data server.
+   *
+   * @param buf the byte buffer to hold the data
+   */
+  void transferFrom(ByteBuf buf) throws IOException;
+
+  /**
+   * @return the current write position (same as the number of bytes written)
+   */
+  long getPosition();
 }

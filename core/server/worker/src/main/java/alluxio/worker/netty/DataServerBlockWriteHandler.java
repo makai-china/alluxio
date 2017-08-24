@@ -18,6 +18,7 @@ import alluxio.WorkerStorageTierAssoc;
 import alluxio.metrics.MetricsSystem;
 import alluxio.network.protocol.RPCProtoMessage;
 import alluxio.proto.dataserver.Protocol;
+import alluxio.util.CommonUtils;
 import alluxio.worker.block.BlockWorker;
 import alluxio.worker.block.io.BlockWriter;
 
@@ -47,20 +48,40 @@ public final class DataServerBlockWriteHandler extends DataServerWriteHandler {
   private long mBytesReserved = 0;
 
   private class BlockWriteRequestInternal extends WriteRequestInternal {
-    public BlockWriter mBlockWriter;
+    final BlockWriter mBlockWriter;
 
-    public BlockWriteRequestInternal(Protocol.WriteRequest request) throws Exception {
-      mWorker.createBlockRemote(request.getSessionId(), request.getId(),
-          mStorageTierAssoc.getAlias(request.getTier()), FILE_BUFFER_SIZE);
+    BlockWriteRequestInternal(Protocol.WriteRequest request) throws Exception {
+      super(request.getId());
+      Preconditions.checkState(request.getOffset() == 0);
+      mWorker.createBlockRemote(mSessionId, mId, mStorageTierAssoc.getAlias(request.getTier()),
+          FILE_BUFFER_SIZE);
       mBytesReserved = FILE_BUFFER_SIZE;
-      mBlockWriter = mWorker.getTempBlockWriterRemote(request.getSessionId(), request.getId());
-      mSessionId = request.getSessionId();
-      mId = request.getId();
+      mBlockWriter = mWorker.getTempBlockWriterRemote(mSessionId, mId);
     }
 
     @Override
     public void close() throws IOException {
       mBlockWriter.close();
+      try {
+        mWorker.commitBlock(mSessionId, mId);
+      } catch (Exception e) {
+        throw CommonUtils.castToIOException(e);
+      }
+    }
+
+    @Override
+    void cancel() throws IOException {
+      mBlockWriter.close();
+      try {
+        mWorker.abortBlock(mSessionId, mId);
+      } catch (Exception e) {
+        throw CommonUtils.castToIOException(e);
+      }
+    }
+
+    @Override
+    void cleanup() throws IOException {
+      mWorker.cleanupSession(mSessionId);
     }
   }
 
@@ -70,7 +91,7 @@ public final class DataServerBlockWriteHandler extends DataServerWriteHandler {
    * @param executorService the executor service to run {@link PacketWriter}s
    * @param blockWorker the block worker
    */
-  public DataServerBlockWriteHandler(ExecutorService executorService, BlockWorker blockWorker) {
+  DataServerBlockWriteHandler(ExecutorService executorService, BlockWorker blockWorker) {
     super(executorService);
     mWorker = blockWorker;
   }
@@ -80,7 +101,7 @@ public final class DataServerBlockWriteHandler extends DataServerWriteHandler {
     if (!super.acceptMessage(object)) {
       return false;
     }
-    Protocol.WriteRequest request = ((RPCProtoMessage) object).getMessage().getMessage();
+    Protocol.WriteRequest request = ((RPCProtoMessage) object).getMessage().asWriteRequest();
     return request.getType() == Protocol.RequestType.ALLUXIO_BLOCK;
   }
 
@@ -88,12 +109,11 @@ public final class DataServerBlockWriteHandler extends DataServerWriteHandler {
    * Initializes the handler if necessary.
    *
    * @param msg the block write request
-   * @throws Exception if it fails to initialize
    */
   protected void initializeRequest(RPCProtoMessage msg) throws Exception {
     super.initializeRequest(msg);
     if (mRequest == null) {
-      Protocol.WriteRequest request = (msg.getMessage()).getMessage();
+      Protocol.WriteRequest request = (msg.getMessage()).asWriteRequest();
       mRequest = new BlockWriteRequestInternal(request);
     }
   }

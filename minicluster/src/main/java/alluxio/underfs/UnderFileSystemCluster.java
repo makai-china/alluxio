@@ -11,13 +11,11 @@
 
 package alluxio.underfs;
 
-import alluxio.AlluxioURI;
-import alluxio.underfs.options.DeleteOptions;
-import alluxio.util.io.PathUtils;
-
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
@@ -28,7 +26,10 @@ import javax.annotation.concurrent.NotThreadSafe;
  */
 @NotThreadSafe
 public abstract class UnderFileSystemCluster {
+  private static final Logger LOG = LoggerFactory.getLogger(UnderFileSystemCluster.class);
+
   class ShutdownHook extends Thread {
+
     UnderFileSystemCluster mUFSCluster = null;
 
     public ShutdownHook(UnderFileSystemCluster ufsCluster) {
@@ -41,7 +42,7 @@ public abstract class UnderFileSystemCluster {
         try {
           mUFSCluster.shutdown();
         } catch (IOException e) {
-          System.out.println("Failed to shutdown underfs cluster: " + e);
+          LOG.warn("Failed to shutdown underfs cluster: {}" + e.getMessage());
         }
       }
     }
@@ -65,7 +66,6 @@ public abstract class UnderFileSystemCluster {
    * Creates an underfs test bed and register the shutdown hook.
    *
    * @param baseDir base directory
-   * @throws IOException when the operation fails
    * @return an instance of the UnderFileSystemCluster class
    */
   public static synchronized UnderFileSystemCluster get(String baseDir)
@@ -96,16 +96,15 @@ public abstract class UnderFileSystemCluster {
         UnderFileSystemCluster ufsCluster =
             (UnderFileSystemCluster) Class.forName(sUnderFSClass).getConstructor(String.class)
                 .newInstance(baseDir);
-        System.out.println("Initialized under file system testing cluster of type "
-            + ufsCluster.getClass().getCanonicalName() + " for integration testing");
+        LOG.info("Initialized ufs cluster {} for integration testing.", sUnderFSClass);
         return ufsCluster;
       } catch (Exception e) {
-        System.err.println("Failed to initialize the ufsCluster of " + sUnderFSClass
-            + " for integration test.");
+        LOG.warn("Failed to initialize the ufs cluster {} for integration testing: {}",
+            sUnderFSClass, e.getMessage());
         throw Throwables.propagate(e);
       }
     }
-    System.out.println("Using default LocalFilesystemCluster for integration testing");
+    LOG.info("Using default {} for integration testing.", LocalFileSystemCluster.class.getName());
     return new LocalFileSystemCluster(baseDir);
   }
 
@@ -131,23 +130,8 @@ public abstract class UnderFileSystemCluster {
    * system for the next test round instead of turning on/off it from time to time. This function is
    * expected to be called either before or after each test case which avoids certain overhead from
    * the bootstrap.
-   *
-   * @throws IOException when the operation fails
    */
-  public void cleanup() throws IOException {
-    if (isStarted()) {
-      String path = getUnderFilesystemAddress() + AlluxioURI.SEPARATOR;
-      UnderFileSystem ufs = UnderFileSystem.Factory.get(path);
-      for (UnderFileStatus p : ufs.listStatus(path)) {
-        String childPath = PathUtils.concatPath(path, p.getName());
-        if (p.isDirectory()) {
-          ufs.deleteDirectory(childPath, DeleteOptions.defaults().setRecursive(true));
-        } else {
-          ufs.deleteFile(childPath);
-        }
-      }
-    }
-  }
+  public abstract void cleanup() throws IOException;
 
   /**
    * @return the address of the UFS
@@ -162,8 +146,6 @@ public abstract class UnderFileSystemCluster {
   /**
    * Adds a shutdown hook. The {@link #shutdown()} phase will be automatically called while the
    * process exists.
-   *
-   * @throws IOException when the operation fails
    */
   public void registerJVMOnExistHook() throws IOException {
     Runtime.getRuntime().addShutdownHook(new ShutdownHook(this));
@@ -171,15 +153,11 @@ public abstract class UnderFileSystemCluster {
 
   /**
    * Stops the underfs cluster system.
-   *
-   * @throws IOException when the operation fails
    */
   public abstract void shutdown() throws IOException;
 
   /**
    * Starts the underfs cluster system.
-   *
-   * @throws IOException when the operation fails
    */
   public abstract void start() throws IOException;
 }

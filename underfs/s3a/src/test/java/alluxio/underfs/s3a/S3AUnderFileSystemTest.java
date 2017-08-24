@@ -12,6 +12,7 @@
 package alluxio.underfs.s3a;
 
 import alluxio.AlluxioURI;
+import alluxio.underfs.UnderFileSystemConfiguration;
 import alluxio.underfs.options.DeleteOptions;
 
 import com.amazonaws.AmazonClientException;
@@ -20,7 +21,9 @@ import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.transfer.TransferManager;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 
@@ -43,6 +46,12 @@ public class S3AUnderFileSystemTest {
   private static final String ACCOUNT_OWNER = "account owner";
 
   /**
+   * The exception expected to be thrown.
+   */
+  @Rule
+  public final ExpectedException mThrown = ExpectedException.none();
+
+  /**
    * Set up.
    */
   @Before
@@ -50,7 +59,7 @@ public class S3AUnderFileSystemTest {
     mClient = Mockito.mock(AmazonS3Client.class);
     mManager = Mockito.mock(TransferManager.class);
     mS3UnderFileSystem = new S3AUnderFileSystem(new AlluxioURI(""), mClient, BUCKET_NAME,
-        BUCKET_MODE, ACCOUNT_OWNER, mManager);
+        BUCKET_MODE, ACCOUNT_OWNER, mManager, UnderFileSystemConfiguration.defaults());
   }
 
   /**
@@ -61,9 +70,8 @@ public class S3AUnderFileSystemTest {
     Mockito.when(mClient.listObjectsV2(Matchers.any(ListObjectsV2Request.class)))
         .thenThrow(AmazonClientException.class);
 
-    boolean result = mS3UnderFileSystem.deleteDirectory(PATH,
-        DeleteOptions.defaults().setRecursive(false));
-    Assert.assertFalse(result);
+    mThrown.expect(IOException.class);
+    mS3UnderFileSystem.deleteDirectory(PATH, DeleteOptions.defaults().setRecursive(false));
   }
 
   /**
@@ -74,9 +82,8 @@ public class S3AUnderFileSystemTest {
     Mockito.when(mClient.listObjectsV2(Matchers.any(ListObjectsV2Request.class)))
         .thenThrow(AmazonClientException.class);
 
-    boolean result = mS3UnderFileSystem.deleteDirectory(PATH,
-        DeleteOptions.defaults().setRecursive(true));
-    Assert.assertFalse(result);
+    mThrown.expect(IOException.class);
+    mS3UnderFileSystem.deleteDirectory(PATH, DeleteOptions.defaults().setRecursive(true));
   }
 
   /**

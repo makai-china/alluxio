@@ -49,7 +49,7 @@ public final class ChgrpCommand extends AbstractShellCommand {
   }
 
   @Override
-  protected Options getOptions() {
+  public Options getOptions() {
     return new Options().addOption(RECURSIVE_OPTION);
   }
 
@@ -59,8 +59,6 @@ public final class ChgrpCommand extends AbstractShellCommand {
    * @param path The {@link AlluxioURI} path as the input of the command
    * @param group The group to be updated to the file or directory
    * @param recursive Whether change the group recursively
-   * @throws AlluxioException when Alluxio exception occurs
-   * @throws IOException when non-Alluxio exception occurs
    */
   private void chgrp(AlluxioURI path, String group, boolean recursive)
       throws AlluxioException, IOException {
@@ -71,11 +69,12 @@ public final class ChgrpCommand extends AbstractShellCommand {
   }
 
   @Override
-  public void run(CommandLine cl) throws AlluxioException, IOException {
+  public int run(CommandLine cl) throws AlluxioException, IOException {
     String[] args = cl.getArgs();
     String group = args[0];
     AlluxioURI path = new AlluxioURI(args[1]);
     chgrp(path, group, cl.hasOption("R"));
+    return 0;
   }
 
   @Override

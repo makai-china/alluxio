@@ -15,12 +15,13 @@ import alluxio.AlluxioURI;
 import alluxio.Constants;
 import alluxio.LocalAlluxioClusterResource;
 import alluxio.PropertyKey;
+import alluxio.BaseIntegrationTest;
 import alluxio.cli.AlluxioShell;
-import alluxio.client.FileSystemTestUtils;
 import alluxio.client.ReadType;
 import alluxio.client.WriteType;
 import alluxio.client.file.FileInStream;
 import alluxio.client.file.FileSystem;
+import alluxio.client.file.FileSystemTestUtils;
 import alluxio.client.file.options.OpenFileOptions;
 import alluxio.exception.AlluxioException;
 import alluxio.master.LocalAlluxioCluster;
@@ -45,8 +46,8 @@ import java.io.PrintStream;
 /**
  * The base class for all the {@link AlluxioShell} test classes.
  */
-public abstract class AbstractAlluxioShellTest {
-  protected static final int SIZE_BYTES = Constants.MB * 10;
+public abstract class AbstractAlluxioShellTest extends BaseIntegrationTest {
+  protected static final int SIZE_BYTES = Constants.MB * 16;
   @Rule
   public LocalAlluxioClusterResource mLocalAlluxioClusterResource =
       new LocalAlluxioClusterResource.Builder()
@@ -81,7 +82,12 @@ public abstract class AbstractAlluxioShellTest {
     System.setOut(mNewOutput);
   }
 
-  protected void copyToLocalWithBytes(int bytes) throws IOException {
+  /**
+   * Tests the "copyToLocal" {@link AlluxioShell} command.
+   *
+   * @param bytes file size
+   */
+  protected void copyToLocalWithBytes(int bytes) throws Exception {
     FileSystemTestUtils.createByteFile(mFileSystem, "/testFile", WriteType.MUST_CACHE, bytes);
     mFsShell.run("copyToLocal", "/testFile",
         mLocalAlluxioCluster.getAlluxioHome() + "/testFile");
@@ -90,6 +96,12 @@ public abstract class AbstractAlluxioShellTest {
     fileReadTest("/testFile", 10);
   }
 
+  /**
+   * Reads the local file copied from Alluxio and checks all the data.
+   *
+   * @param fileName file name
+   * @param size file size
+   */
   protected void fileReadTest(String fileName, int size) throws IOException {
     File testFile = new File(PathUtils.concatPath(mLocalAlluxioCluster.getAlluxioHome(), fileName));
     FileInputStream fis = new FileInputStream(testFile);
@@ -99,6 +111,14 @@ public abstract class AbstractAlluxioShellTest {
     Assert.assertTrue(BufferUtils.equalIncreasingByteArray(size, read));
   }
 
+  /**
+   * Creates file by given path and writes content to file.
+   *
+   * @param path the file path
+   * @param toWrite the file content
+   * @return the created file instance
+   * @throws FileNotFoundException if file not found
+   */
   protected File generateFileContent(String path, byte[] toWrite) throws IOException,
       FileNotFoundException {
     File testFile = new File(mLocalAlluxioCluster.getAlluxioHome() + path);
@@ -109,6 +129,30 @@ public abstract class AbstractAlluxioShellTest {
     return testFile;
   }
 
+  /**
+   * Creates file by given the temporary path and writes content to file.
+   *
+   * @param path the file path
+   * @param toWrite the file content
+   * @return the created file instance
+   * @throws FileNotFoundException if file not found
+   */
+  protected File generateRelativeFileContent(String path, byte[] toWrite) throws IOException,
+      FileNotFoundException {
+    File testFile = new File(path);
+    testFile.createNewFile();
+    FileOutputStream fos = new FileOutputStream(testFile);
+    fos.write(toWrite);
+    fos.close();
+    return testFile;
+  }
+
+  /**
+   * Get an output string displayed in shell according to the command.
+   *
+   * @param command a shell command
+   * @return the output string
+   */
   protected String getCommandOutput(String[] command) {
     String cmd = command[0];
     if (command.length == 2) {
@@ -131,8 +175,10 @@ public abstract class AbstractAlluxioShellTest {
         case "mv":
           return "Renamed " + command[1] + " to " + command[2] + "\n";
         case "copyFromLocal":
-          return "Copied " + command[1] + " to " + command[2] + "\n";
+          return "Copied " + "file://" + command[1] + " to " + command[2] + "\n";
         case "copyToLocal":
+          return "Copied " + command[1] + " to " + "file://" + command[2] + "\n";
+        case "cp":
           return "Copied " + command[1] + " to " + command[2] + "\n";
         default:
           return null;
@@ -157,14 +203,29 @@ public abstract class AbstractAlluxioShellTest {
     return null;
   }
 
+  /**
+   * Resets the singleton {@link alluxio.security.LoginUser} to null.
+   */
   protected void clearLoginUser() {
     LoginUserTestUtils.resetLoginUser();
   }
 
+  /**
+   * Clears the {@link alluxio.security.LoginUser} and logs in with new user.
+   *
+   * @param user the new user
+   */
   protected void clearAndLogin(String user) throws IOException {
     LoginUserTestUtils.resetLoginUser(user);
   }
 
+  /**
+   * Reads content from the file that the uri points to.
+   *
+   * @param uri the path of the file to read
+   * @param length the length of content to read
+   * @return the content that has been read
+   */
   protected byte[] readContent(AlluxioURI uri, int length) throws IOException, AlluxioException {
     try (FileInStream tfis = mFileSystem
         .openFile(uri, OpenFileOptions.defaults().setReadType(ReadType.NO_CACHE))) {
@@ -174,10 +235,18 @@ public abstract class AbstractAlluxioShellTest {
     }
   }
 
+  /**
+   * @param path a file path
+   * @return whether the file is in memory
+   */
   protected boolean isInMemoryTest(String path) throws IOException, AlluxioException {
     return (mFileSystem.getStatus(new AlluxioURI(path)).getInMemoryPercentage() == 100);
   }
 
+  /**
+   * @param path a file path
+   * @return whether the file exists
+   */
   protected boolean fileExists(AlluxioURI path) {
     try {
       return mFileSystem.exists(path);
