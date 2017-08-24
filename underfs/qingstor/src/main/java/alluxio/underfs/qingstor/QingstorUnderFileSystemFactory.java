@@ -16,6 +16,7 @@ import alluxio.Configuration;
 import alluxio.Constants;
 import alluxio.PropertyKey;
 import alluxio.underfs.UnderFileSystem;
+import alluxio.underfs.UnderFileSystemConfiguration;
 import alluxio.underfs.UnderFileSystemFactory;
 
 import com.google.common.base.Preconditions;
@@ -38,12 +39,12 @@ public class QingstorUnderFileSystemFactory implements UnderFileSystemFactory {
   public QingstorUnderFileSystemFactory() {}
 
   @Override
-  public UnderFileSystem create(String path, Object unusedConf) {
-    Preconditions.checkNotNull(path);
+  public UnderFileSystem create(String path, UnderFileSystemConfiguration conf) {
+    Preconditions.checkNotNull(path, "path");
 
-    if (checkQingstorCredentials()) {
+    if (checkQingstorCredentials(conf)) {
       try {
-        return QingstorUnderFileSystem.createInstance(new AlluxioURI(path));
+        return QingstorUnderFileSystem.createInstance(new AlluxioURI(path), conf);
       } catch (Exception e) {
         throw Throwables.propagate(e);
       }
@@ -61,8 +62,8 @@ public class QingstorUnderFileSystemFactory implements UnderFileSystemFactory {
   /**
    * @return true if both access and secret key are present, false otherwise
    */
-  private boolean checkQingstorCredentials() {
-    return Configuration.containsKey(PropertyKey.QINGSTOR_ACCESS_KEY)
-        && Configuration.containsKey(PropertyKey.QINGSTOR_SECRET_KEY);
+  private boolean checkQingstorCredentials(UnderFileSystemConfiguration conf) {
+    return conf.containsKey(PropertyKey.QINGSTOR_ACCESS_KEY)
+        && conf.containsKey(PropertyKey.QINGSTOR_SECRET_KEY);
   }
 }
